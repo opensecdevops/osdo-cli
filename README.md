@@ -1,3 +1,5 @@
+> ⚠️ **Mirror** — This repository is mirrored from [GitLab](https://gitlab.com/opensecdevops/osdo-cli). Please submit issues and merge requests there.
+
 # OSDO CLI — Zero to Secure DevOps en 5 minutos
 
 CLI oficial del framework OSDO (Open Secure DevOps), construido con [oclif](https://oclif.io/) y TypeScript. Permite gestionar pipelines de CI/CD, catálogos de componentes, presets de deployment, escáneres de seguridad y la integración con la OSDO App web — todo desde la terminal.
