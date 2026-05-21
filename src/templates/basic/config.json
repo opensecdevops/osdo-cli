@@ -1,0 +1,47 @@
+{
+  "name": "basic",
+  "description": "Basic security pipeline: SAST + SCA + Secrets detection",
+  "version": "2.0.0",
+  "blocks": [
+    {
+      "template": "workflow",
+      "title": "Pipeline Configuration",
+      "fields": [
+        {
+          "name": "defaultBranch",
+          "label": "Default branch",
+          "type": "select",
+          "options": [
+            {"id": "main", "value": "main"},
+            {"id": "master", "value": "master"},
+            {"id": "develop", "value": "develop"}
+          ],
+          "rules": {"required": true}
+        },
+        {
+          "name": "language",
+          "label": "Primary language",
+          "type": "select",
+          "options": [
+            {"id": "auto", "value": "auto"},
+            {"id": "javascript", "value": "javascript"},
+            {"id": "typescript", "value": "typescript"},
+            {"id": "python", "value": "python"},
+            {"id": "go", "value": "go"},
+            {"id": "java", "value": "java"},
+            {"id": "php", "value": "php"},
+            {"id": "ruby", "value": "ruby"},
+            {"id": "csharp", "value": "csharp"}
+          ],
+          "rules": {"required": true}
+        },
+        {
+          "name": "failOnCritical",
+          "label": "Fail pipeline on critical vulnerabilities?",
+          "type": "checkbox",
+          "rules": {}
+        }
+      ]
+    }
+  ]
+}

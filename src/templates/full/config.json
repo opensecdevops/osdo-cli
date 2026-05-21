@@ -1,0 +1,60 @@
+{
+  "name": "full",
+  "description": "Full security pipeline: All scans + IaC + Container + Signing + Compliance",
+  "version": "2.0.0",
+  "blocks": [
+    {
+      "template": "workflow",
+      "title": "Pipeline Configuration",
+      "fields": [
+        {
+          "name": "defaultBranch",
+          "label": "Default branch",
+          "type": "select",
+          "options": [
+            {"id": "main", "value": "main"},
+            {"id": "master", "value": "master"}
+          ],
+          "rules": {"required": true}
+        },
+        {
+          "name": "language",
+          "label": "Primary language",
+          "type": "select",
+          "options": [
+            {"id": "auto", "value": "auto"},
+            {"id": "javascript", "value": "javascript"},
+            {"id": "python", "value": "python"},
+            {"id": "go", "value": "go"},
+            {"id": "java", "value": "java"}
+          ],
+          "rules": {"required": true}
+        },
+        {
+          "name": "imageName",
+          "label": "Container image name",
+          "type": "text",
+          "rules": {"required": true}
+        },
+        {
+          "name": "iacFramework",
+          "label": "IaC framework",
+          "type": "select",
+          "options": [
+            {"id": "terraform", "value": "terraform"},
+            {"id": "kubernetes", "value": "kubernetes"},
+            {"id": "cloudformation", "value": "cloudformation"},
+            {"id": "all", "value": "all"}
+          ],
+          "rules": {"required": true}
+        },
+        {
+          "name": "failOnCritical",
+          "label": "Fail on critical/high vulnerabilities?",
+          "type": "checkbox",
+          "rules": {}
+        }
+      ]
+    }
+  ]
+}
