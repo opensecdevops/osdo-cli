@@ -1,0 +1,99 @@
+{
+  "name": "@osdo/cli",
+  "version": "2.0.0",
+  "description": "OSDO CLI — Framework DevSecOps Open Source",
+  "type": "module",
+  "exports": "./dist/index.js",
+  "bin": {
+    "osdo": "./bin/run.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "shx rm -rf dist && tsc -b",
+    "dev": "tsc -b --watch",
+    "lint": "eslint . --ext .ts",
+    "postpack": "shx rm -f oclif.manifest.json",
+    "prepack": "npm run build && oclif manifest && oclif readme",
+    "test": "mocha --forbid-only \"test/**/*.test.ts\"",
+    "version": "oclif readme && git add README.md"
+  },
+  "dependencies": {
+    "@oclif/core": "^4",
+    "@oclif/plugin-help": "^6",
+    "@oclif/plugin-update": "^4",
+    "@oclif/plugin-plugins": "^5",
+    "@inquirer/prompts": "^7",
+    "axios": "^1.7",
+    "axios-retry": "^4",
+    "conf": "^13",
+    "js-yaml": "^4",
+    "chalk": "^5",
+    "cli-table3": "^0.6",
+    "execa": "^9",
+    "listr2": "^8",
+    "handlebars": "^4.7",
+    "ajv": "^8.12",
+    "@kubernetes/client-node": "^0.22"
+  },
+  "devDependencies": {
+    "@oclif/test": "^4",
+    "@types/js-yaml": "^4",
+    "@types/handlebars": "^4",
+    "@types/node": "^22",
+    "@types/chai": "^5",
+    "@types/sinon": "^17",
+    "typescript": "^5.5",
+    "mocha": "^10",
+    "chai": "^5",
+    "sinon": "^18",
+    "ts-node": "^10",
+    "shx": "^0.3",
+    "eslint": "^8",
+    "@typescript-eslint/eslint-plugin": "^7",
+    "@typescript-eslint/parser": "^7"
+  },
+  "oclif": {
+    "bin": "osdo",
+    "dirname": "osdo",
+    "commands": {
+      "strategy": "pattern",
+      "target": "./dist/commands"
+    },
+    "topicSeparator": " ",
+    "helpOptions": {
+      "hideCommandSummaryInDescription": false
+    },
+    "plugins": [
+      "@oclif/plugin-help",
+      "@oclif/plugin-update",
+      "@oclif/plugin-plugins"
+    ],
+    "hooks": {
+      "init": [
+        "./dist/hooks/init"
+      ]
+    },
+    "topics": {
+      "pipeline": {
+        "description": "Gestionar pipelines CI/CD"
+      },
+      "catalog": {
+        "description": "Explorar y agregar componentes OSDO"
+      },
+      "preset": {
+        "description": "Gestionar presets de deployment"
+      },
+      "app": {
+        "description": "Integración con la OSDO App"
+      },
+      "monitor": {
+        "description": "Monitorización de la infraestructura OSDO"
+      },
+      "security": {
+        "description": "Operaciones de seguridad avanzadas"
+      }
+    }
+  }
+}
