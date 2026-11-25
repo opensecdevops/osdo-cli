@@ -2,16 +2,32 @@
   "name": "@osdo/cli",
   "version": "2.0.0",
   "description": "OSDO CLI — Framework DevSecOps Open Source",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/opensecdevops/osdo-cli.git"
+  },
   "type": "module",
   "exports": "./dist/index.js",
   "bin": {
     "osdo": "./bin/run.js"
   },
+  "files": [
+    "bin/run.js",
+    "dist",
+    "oclif.manifest.json",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "shx rm -rf dist && tsc -b",
+    "build": "shx rm -rf dist && tsc -b && shx cp -r src/templates/full src/templates/basic src/templates/container dist/templates/",
     "dev": "tsc -b --watch",
     "lint": "eslint . --ext .ts",
     "postpack": "shx rm -f oclif.manifest.json",
