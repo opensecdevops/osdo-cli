@@ -3,6 +3,7 @@ import {join} from 'node:path'
 import yaml from 'js-yaml'
 import type {SecurityControl} from './baseline.js'
 import {SECURITY_CONTROLS} from './baseline.js'
+import type {AuditException} from './exceptions.js'
 
 export interface WorkflowStep {
   name?: string
@@ -14,6 +15,9 @@ export interface WorkflowStep {
 
 export interface WorkflowJob {
   name?: string
+  /** Reusable workflow call a nivel de job: `jobs.<id>.uses` */
+  uses?: string
+  with?: Record<string, unknown>
   steps?: WorkflowStep[]
   permissions?: Record<string, string>
 }
@@ -37,6 +41,8 @@ export interface ControlCoverage {
   isOsdo: boolean
   /** Archivos de workflow donde se detectó cobertura */
   files: string[]
+  /** Excepción N/A aplicada a este control (si existe en .osdo/exceptions.yml) */
+  exception?: AuditException
 }
 
 export interface WorkflowAuditResult {
@@ -46,8 +52,15 @@ export interface WorkflowAuditResult {
   workflows: ParsedWorkflow[]
   /** Cobertura por control */
   coverage: ControlCoverage[]
-  /** Score total */
+  /**
+   * Puntuación final (0-100). Con excepciones: puntos cubiertos / puntos aplicables * 100,
+   * redondeada hacia abajo; los controles exceptuados no cuentan en numerador ni denominador.
+   */
   score: number
+  /** Puntuación bruta: puntos cubiertos / 100, sin aplicar excepciones */
+  scoreWithoutExceptions: number
+  /** Excepciones N/A aplicadas (vacío si no hay archivo o se usó --no-exceptions) */
+  exceptions: AuditException[]
   /** Si cada workflow tiene permissions: declaradas */
   permissionsCoverage: {file: string; hasPermissions: boolean}[]
   /** Si las actions están fijadas por hash (pinned) */
@@ -101,16 +114,34 @@ export function parseWorkflowContents(
 }
 
 /**
- * Extrae todos los steps de todos los jobs de un workflow.
+ * Extrae las referencias `uses:` de un workflow: los steps de cada job y,
+ * como referencia equivalente, `jobs.<id>.uses` (llamadas a reusable workflows).
  */
 function extractSteps(workflow: ParsedWorkflow): WorkflowStep[] {
   const steps: WorkflowStep[] = []
-  for (const job of Object.values(workflow.jobs ?? {})) {
+  for (const [jobId, job] of Object.entries(workflow.jobs ?? {})) {
+    if (typeof job.uses === 'string' && job.uses.trim() !== '') {
+      steps.push({name: job.name ?? jobId, uses: job.uses.trim(), with: job.with})
+    }
     for (const step of job.steps ?? []) {
       steps.push(step)
     }
   }
   return steps
+}
+
+/** Ruta de reusable workflow publicada por OSDO: `opensecdevops/<repo>/.github/workflows/<slug>.yml@<ref>` */
+const OSDO_REUSABLE_WORKFLOW_RE = /^opensecdevops\/[^/]+\/\.github\/workflows\/([^/@]+)\.ya?ml@/i
+
+/**
+ * Indica si un `uses:` de reusable workflow OSDO corresponde al control.
+ * El slug del control es el nombre de su action OSDO (p. ej. `osdo-sast`).
+ */
+function isOsdoReusableWorkflowFor(control: SecurityControl, uses: string): boolean {
+  if (!control.osdoAction.startsWith('opensecdevops/')) return false
+  const slug = control.osdoAction.split('/').pop()?.toLowerCase()
+  const match = OSDO_REUSABLE_WORKFLOW_RE.exec(uses.trim())
+  return Boolean(slug && match && match[1].toLowerCase() === slug)
 }
 
 /**
@@ -138,8 +169,8 @@ export function evaluateCoverage(workflows: ParsedWorkflow[]): WorkflowAuditResu
       const uses = step.uses?.toLowerCase() ?? ''
       const run = step.run?.toLowerCase() ?? ''
 
-      // Detectar action OSDO nativa
-      if (uses.includes(control.osdoAction.toLowerCase())) {
+      // Detectar action OSDO nativa (o reusable workflow OSDO del mismo control)
+      if (uses.includes(control.osdoAction.toLowerCase()) || isOsdoReusableWorkflowFor(control, step.uses ?? '')) {
         result.covered = true
         result.isOsdo = true
         result.coveredBy = step.uses ?? control.osdoAction
@@ -216,7 +247,7 @@ export function evaluateCoverage(workflows: ParsedWorkflow[]): WorkflowAuditResu
       : `Solo ${Math.round(avgPinnedRatio * 100)}% fijadas (se requiere ≥90%)`
   }
 
-  // ── 4. Score total ────────────────────────────────────────────────────────
+  // ── 4. Score total (sin excepciones; ver applyExceptions) ─────────────────
   const score = coverage
     .filter(c => c.covered)
     .reduce((sum, c) => sum + c.control.points, 0)
@@ -226,6 +257,8 @@ export function evaluateCoverage(workflows: ParsedWorkflow[]): WorkflowAuditResu
     workflows,
     coverage,
     score,
+    scoreWithoutExceptions: score,
+    exceptions: [],
     permissionsCoverage,
     pinnedActionsReport,
   }

@@ -1,0 +1,13 @@
+name: CI
+on: [push]
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: opensecdevops/osdo-actions/actions/osdo-secrets-scan@1111111111111111111111111111111111111111
+      - uses: opensecdevops/osdo-actions/actions/osdo-sast@2222222222222222222222222222222222222222
+      - uses: opensecdevops/osdo-actions/actions/osdo-sca@3333333333333333333333333333333333333333
+      - uses: opensecdevops/osdo-actions/actions/osdo-container-scan@4444444444444444444444444444444444444444

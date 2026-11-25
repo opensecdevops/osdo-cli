@@ -1,0 +1,6 @@
+- control: secrets
+  status: not-applicable
+  reason: Intento de exceptuar un control esencial, que nunca debe exceptuarse.
+  owner: equipo-plataforma
+  approved_by: jefe-seguridad
+  expires: 2027-06-30

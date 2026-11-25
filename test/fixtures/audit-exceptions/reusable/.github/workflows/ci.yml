@@ -1,0 +1,11 @@
+name: CI
+on: [push]
+permissions:
+  contents: read
+jobs:
+  sast:
+    uses: opensecdevops/osdo-workflows/.github/workflows/osdo-sast.yml@v2
+    with:
+      severity: high
+  secrets:
+    uses: opensecdevops/osdo-workflows/.github/workflows/osdo-secrets-scan.yml@v2

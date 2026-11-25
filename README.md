@@ -165,6 +165,51 @@ osdo app logout
 | `osdo monitor alerts` | View active alerts |
 | `osdo monitor dashboard` | Open the Grafana dashboard |
 
+### `osdo audit`
+
+Audits CI/CD pipelines (GitHub Actions or GitLab CI) against the OSDO baseline.
+
+```bash
+osdo audit                                  # .github/workflows in the current directory
+osdo audit --repo acme/api --token $GITHUB_TOKEN
+osdo audit --path .github/workflows --exceptions ci/osdo-exceptions.yml --format json
+osdo audit --min-score 70 --no-exceptions   # CI gate without exceptions
+```
+
+#### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Audit completed and the gates (`--min-score`, `--fail-on-gap`) passed |
+| `1` | Runtime error (connection, token, unreadable path, unexpected failure) |
+| `2` | Invalid usage, or invalid exceptions file (`.osdo/exceptions.yml` or `--exceptions`) |
+| `3` | CI gate failed: score below `--min-score`, or essential gaps with `--fail-on-gap` |
+
+#### N/A exceptions
+
+A control that does not apply to the repository can be marked N/A in `.osdo/exceptions.yml`:
+
+```yaml
+- control: sbom
+  status: not-applicable
+  reason: Library with no published artifacts; there is nothing to inventory.
+  owner: platform-team
+  approved_by: security-lead
+  expires: 2027-06-30
+```
+
+- `control`: id of a baseline control. Essential controls (`secrets`, `sast`, `sca`) cannot be excepted.
+- `reason`: at least 20 characters. `owner` and `approved_by` are required.
+- `expires`: `YYYY-MM-DD`, not earlier than today and at most 365 days from today.
+- Unknown fields, repeated controls or invalid entries fail the audit with exit code `2`, listing every problem.
+- Excepted controls are removed from both the numerator and the denominator: `score = covered points / applicable points × 100`, rounded down. They are reported as `N/A (excepción)` with reason, owner and expiry in every output format. In JSON, `scoreWithoutExceptions` keeps the raw score and `exceptions` lists the applied exceptions.
+- Source of the file: with `--path`, `.osdo/exceptions.yml` in the current directory is read, or the file given with `--exceptions`. With `--repo` and `--gitlab-project` only `--exceptions <file>` is used. `--org` and `--gitlab-group` do not accept `--exceptions` (exit code `2`).
+- `--no-exceptions` ignores the file and reports every control.
+
+#### Reusable workflows
+
+A job-level call (`jobs.<id>.uses`) counts as coverage when it references an OSDO reusable workflow whose file name matches the control, for example `opensecdevops/osdo-workflows/.github/workflows/osdo-sast.yml@<ref>`. Reusable workflows that bundle several controls (for example `osdo-framework.yml`) are not mapped to individual controls and do not add coverage on their own.
+
 ---
 
 ## Configuration

@@ -165,6 +165,51 @@ osdo app logout
 | `osdo monitor alerts` | Ver alertas activas |
 | `osdo monitor dashboard` | Abrir dashboard de Grafana |
 
+### `osdo audit`
+
+Audita los pipelines CI/CD (GitHub Actions o GitLab CI) frente al baseline OSDO.
+
+```bash
+osdo audit                                  # .github/workflows del directorio actual
+osdo audit --repo acme/api --token $GITHUB_TOKEN
+osdo audit --path .github/workflows --exceptions ci/osdo-exceptions.yml --format json
+osdo audit --min-score 70 --no-exceptions   # gate de CI sin excepciones
+```
+
+#### Códigos de salida
+
+| Código | Significado |
+|--------|-------------|
+| `0` | Auditoría completada y los gates (`--min-score`, `--fail-on-gap`) se cumplen |
+| `1` | Error de ejecución (conexión, token, ruta no legible, fallo inesperado) |
+| `2` | Uso incorrecto, o archivo de excepciones inválido (`.osdo/exceptions.yml` o `--exceptions`) |
+| `3` | Gate de CI incumplido: puntuación inferior a `--min-score`, o gaps en controles esenciales con `--fail-on-gap` |
+
+#### Excepciones N/A
+
+Un control que no aplica al repositorio puede marcarse como N/A en `.osdo/exceptions.yml`:
+
+```yaml
+- control: sbom
+  status: not-applicable
+  reason: Librería sin artefactos publicados; no hay nada que inventariar.
+  owner: equipo-plataforma
+  approved_by: jefe-seguridad
+  expires: 2027-06-30
+```
+
+- `control`: id de un control del baseline. Los controles `esencial` (`secrets`, `sast`, `sca`) no pueden exceptuarse.
+- `reason`: al menos 20 caracteres. `owner` y `approved_by`: obligatorios.
+- `expires`: `YYYY-MM-DD`, no anterior a hoy y como máximo 365 días desde hoy.
+- Campos desconocidos, controles repetidos o entradas inválidas hacen fallar la auditoría con código `2`, listando todos los problemas.
+- Los controles exceptuados se excluyen del numerador y del denominador: `puntuación = puntos cubiertos / puntos aplicables × 100`, redondeada hacia abajo. Se muestran como `N/A (excepción)` con motivo, responsable y caducidad en todos los formatos. En JSON, `scoreWithoutExceptions` conserva la puntuación bruta y `exceptions` lista las excepciones aplicadas.
+- Origen del archivo: en `--path` se lee `.osdo/exceptions.yml` del directorio actual, o el indicado con `--exceptions`. En `--repo` y `--gitlab-project` solo se usa `--exceptions <archivo>`. `--org` y `--gitlab-group` no aceptan `--exceptions` (código `2`).
+- `--no-exceptions` ignora el archivo y reporta todos los controles.
+
+#### Reusable workflows
+
+Una llamada a nivel de job (`jobs.<id>.uses`) cuenta como cobertura cuando referencia una reusable workflow OSDO cuyo nombre coincide con el control, por ejemplo `opensecdevops/osdo-workflows/.github/workflows/osdo-sast.yml@<ref>`. Las reusable workflows que agrupan varios controles (p. ej. `osdo-framework.yml`) no se asignan a controles concretos y no suman cobertura por sí solas.
+
 ---
 
 ## Configuracion

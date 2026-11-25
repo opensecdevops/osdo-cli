@@ -473,6 +473,8 @@ export function evaluateGitLabCoverage(pipelines: ParsedGitLabPipeline[]): Workf
     workflows: pipelines as unknown as import('./workflow-parser.js').ParsedWorkflow[],
     coverage,
     score,
+    scoreWithoutExceptions: score,
+    exceptions: [],
     permissionsCoverage,
     pinnedActionsReport,
   }
