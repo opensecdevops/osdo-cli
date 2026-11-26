@@ -1,0 +1,25 @@
+# Cuatro entradas, cada una con un problema distinto
+- control: sbom
+  status: not-applicable
+  reason: Demasiado corta
+  owner: equipo-plataforma
+  approved_by: jefe-seguridad
+  expires: 2020-01-01
+- control: control-inexistente
+  status: not-applicable
+  reason: Motivo suficientemente largo para superar la validación de longitud.
+  owner: equipo-plataforma
+  approved_by: jefe-seguridad
+  expires: 2027-06-30
+  extra: campo no admitido
+- control: iac
+  status: not-applicable
+  reason: Motivo suficientemente largo para superar la validación de longitud.
+  owner: equipo-plataforma
+  approved_by: jefe-seguridad
+- control: sbom
+  status: not-applicable
+  reason: Motivo suficientemente largo para superar la validación de longitud.
+  owner: equipo-plataforma
+  approved_by: jefe-seguridad
+  expires: 2027-06-30

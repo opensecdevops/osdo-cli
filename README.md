@@ -1,27 +1,33 @@
+English | [Español](README.es.md)
+
 > ⚠️ **Mirror** — This repository is mirrored from [GitLab](https://gitlab.com/opensecdevops/osdo-cli). Please submit issues and merge requests there.
 
-# OSDO CLI — Zero to Secure DevOps en 5 minutos
+# OSDO CLI — Zero to Secure DevOps in 5 minutes
 
-CLI oficial del framework OSDO (Open Secure DevOps), construido con [oclif](https://oclif.io/) y TypeScript. Permite gestionar pipelines de CI/CD, catálogos de componentes, presets de deployment, escáneres de seguridad y la integración con la OSDO App web — todo desde la terminal.
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/opensecdevops/osdo-cli/badge)](https://securityscorecards.dev/viewer/?uri=github.com/opensecdevops/osdo-cli)
+
+Official CLI for the OSDO framework (Open Secure DevOps), built with [oclif](https://oclif.io/) and TypeScript. It lets you manage CI/CD pipelines, component catalogs, deployment presets, security scanners and the integration with the OSDO web App, all from the terminal.
 
 ---
 
-## Instalacion
+## Installation
 
 ### npm (global)
+
+> The package `@osdo/cli` is not yet published to npm.
 
 ```bash
 npm install -g @osdo/cli
 ```
 
-### Homebrew (próximamente)
+### Homebrew (coming soon)
 
 ```bash
 brew tap opensecdevops/tap
 brew install osdo
 ```
 
-### Desde el código fuente
+### From source
 
 ```bash
 git clone https://github.com/opensecdevops/osdo-cli.git
@@ -31,66 +37,66 @@ npm run build
 npm link
 ```
 
-Requiere **Node.js >= 20**.
+Requires **Node.js >= 20**.
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Inicializar un proyecto OSDO en el directorio actual
+# 1. Initialize an OSDO project in the current directory
 osdo init
 
-# 2. Explorar el catálogo de componentes disponibles
+# 2. Explore the catalog of available components
 osdo catalog list
 
-# 3. Ejecutar un escaneo de seguridad
+# 3. Run a security scan
 osdo security scan
 
-# 4. Certificar el entorno actual
+# 4. Certify the current environment
 osdo certify
 ```
 
 ---
 
-## Integracion con la OSDO App
+## OSDO App Integration
 
-La OSDO App web ([app.opensecdevops.com](https://app.opensecdevops.com)) permite construir visualmente tus configuraciones de infraestructura y pipelines. El CLI se conecta a la App para descargar los paquetes generados y sincronizar el estado de tus deployments.
+The OSDO web App ([app.opensecdevops.com](https://app.opensecdevops.com)) lets you visually build your infrastructure configurations and pipelines. The CLI connects to the App to download generated packages and sync the state of your deployments.
 
-### Conectar el CLI a la App
+### Connect the CLI to the App
 
 ```bash
-# Iniciar sesión con tu cuenta de la OSDO App
+# Log in with your OSDO App account
 osdo app login --url https://app.opensecdevops.com
 
-# Verificar el estado de la conexión
+# Check the connection status
 osdo app status
 ```
 
-### Descargar un paquete generado
+### Download a generated package
 
 ```bash
-# Listar paquetes disponibles y seleccionar uno interactivamente
+# List available packages and select one interactively
 osdo app pull
 
-# Descargar un paquete concreto por ID
+# Download a specific package by ID
 osdo app pull 42
 
-# Especificar directorio de destino
+# Specify a target directory
 osdo app pull 42 --dir ./infrastructure
 ```
 
-### Sincronizar el estado de un deployment
+### Sync the state of a deployment
 
 ```bash
-# Marcar un deployment como desplegado
+# Mark a deployment as deployed
 osdo app push --deployment-id 1 --status deployed
 
-# Reportar un fallo con mensaje
-osdo app push --deployment-id 1 --status failed --message "Error en namespace production"
+# Report a failure with a message
+osdo app push --deployment-id 1 --status failed --message "Error in namespace production"
 ```
 
-### Cerrar sesión
+### Log out
 
 ```bash
 osdo app logout
@@ -98,81 +104,126 @@ osdo app logout
 
 ---
 
-## Referencia de comandos
+## Command Reference
 
-### Flags globales
+### Global flags
 
-| Flag | Alias | Descripcion | Default |
+| Flag | Alias | Description | Default |
 |------|-------|-------------|---------|
-| `--verbose` | `-v` | Salida detallada | `false` |
-| `--dry-run` | — | Simular sin ejecutar | `false` |
-| `--output` | `-o` | Formato: `table`, `json`, `yaml` | `table` |
-| `--config` | — | Archivo de configuracion alternativo | — |
+| `--verbose` | `-v` | Verbose output | `false` |
+| `--dry-run` | — | Simulate without executing | `false` |
+| `--output` | `-o` | Format: `table`, `json`, `yaml` | `table` |
+| `--config` | — | Alternative configuration file | — |
 
 ### `osdo app`
 
-| Comando | Descripcion |
+| Command | Description |
 |---------|-------------|
-| `osdo app login` | Autenticarse con la OSDO App |
-| `osdo app logout` | Cerrar sesión |
-| `osdo app status` | Ver estado de la conexión |
-| `osdo app pull [id]` | Descargar paquete generado por la App |
-| `osdo app push` | Enviar estado de deployment a la App |
+| `osdo app login` | Authenticate with the OSDO App |
+| `osdo app logout` | Log out |
+| `osdo app status` | View connection status |
+| `osdo app pull [id]` | Download a package generated by the App |
+| `osdo app push` | Send deployment status to the App |
 
 ### `osdo pipeline`
 
-| Comando | Descripcion |
+| Command | Description |
 |---------|-------------|
-| `osdo pipeline list` | Listar pipelines configurados |
-| `osdo pipeline run <name>` | Ejecutar un pipeline |
-| `osdo pipeline status <name>` | Ver estado de un pipeline |
+| `osdo pipeline list` | List configured pipelines |
+| `osdo pipeline run <name>` | Run a pipeline |
+| `osdo pipeline status <name>` | View the status of a pipeline |
 
 ### `osdo catalog`
 
-| Comando | Descripcion |
+| Command | Description |
 |---------|-------------|
-| `osdo catalog list` | Listar componentes disponibles |
-| `osdo catalog info <component>` | Ver detalles de un componente |
-| `osdo catalog update` | Actualizar el catálogo local |
+| `osdo catalog list` | List available components |
+| `osdo catalog info <component>` | View details of a component |
+| `osdo catalog update` | Update the local catalog |
 
 ### `osdo preset`
 
-| Comando | Descripcion |
+| Command | Description |
 |---------|-------------|
-| `osdo preset list` | Listar presets guardados |
-| `osdo preset apply <name>` | Aplicar un preset de deployment |
-| `osdo preset save <name>` | Guardar configuracion como preset |
+| `osdo preset list` | List saved presets |
+| `osdo preset apply <name>` | Apply a deployment preset |
+| `osdo preset save <name>` | Save the configuration as a preset |
 
 ### `osdo security`
 
-| Comando | Descripcion |
+| Command | Description |
 |---------|-------------|
-| `osdo security scan` | Escanear vulnerabilidades en el proyecto |
-| `osdo security policy` | Gestionar políticas de seguridad |
-| `osdo security report` | Generar informe de cumplimiento |
+| `osdo security scan` | Scan the project for vulnerabilities |
+| `osdo security policy` | Manage security policies |
+| `osdo security report` | Generate a compliance report |
 
 ### `osdo monitor`
 
-| Comando | Descripcion |
+| Command | Description |
 |---------|-------------|
-| `osdo monitor status` | Ver estado de la infraestructura |
-| `osdo monitor alerts` | Ver alertas activas |
-| `osdo monitor dashboard` | Abrir dashboard de Grafana |
+| `osdo monitor status` | View infrastructure status |
+| `osdo monitor alerts` | View active alerts |
+| `osdo monitor dashboard` | Open the Grafana dashboard |
+
+### `osdo audit`
+
+Audits CI/CD pipelines (GitHub Actions or GitLab CI) against the OSDO baseline.
+
+```bash
+osdo audit                                  # .github/workflows in the current directory
+osdo audit --repo acme/api --token $GITHUB_TOKEN
+osdo audit --path .github/workflows --exceptions ci/osdo-exceptions.yml --format json
+osdo audit --min-score 70 --no-exceptions   # CI gate without exceptions
+```
+
+#### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Audit completed and the gates (`--min-score`, `--fail-on-gap`) passed |
+| `1` | Runtime error (connection, token, unreadable path, unexpected failure) |
+| `2` | Invalid usage, or invalid exceptions file (`.osdo/exceptions.yml` or `--exceptions`) |
+| `3` | CI gate failed: score below `--min-score`, or essential gaps with `--fail-on-gap` |
+
+#### N/A exceptions
+
+A control that does not apply to the repository can be marked N/A in `.osdo/exceptions.yml`:
+
+```yaml
+- control: sbom
+  status: not-applicable
+  reason: Library with no published artifacts; there is nothing to inventory.
+  owner: platform-team
+  approved_by: security-lead
+  expires: 2027-06-30
+```
+
+- `control`: id of a baseline control. Essential controls (`secrets`, `sast`, `sca`) cannot be excepted.
+- `reason`: at least 20 characters. `owner` and `approved_by` are required.
+- `expires`: `YYYY-MM-DD`, not earlier than today and at most 365 days from today.
+- Unknown fields, repeated controls or invalid entries fail the audit with exit code `2`, listing every problem.
+- Excepted controls are removed from both the numerator and the denominator: `score = covered points / applicable points × 100`, rounded down. They are reported as `N/A (excepción)` with reason, owner and expiry in every output format. In JSON, `scoreWithoutExceptions` keeps the raw score and `exceptions` lists the applied exceptions.
+- Source of the file: with `--path`, `.osdo/exceptions.yml` in the current directory is read, or the file given with `--exceptions`. With `--repo` and `--gitlab-project` only `--exceptions <file>` is used. `--org` and `--gitlab-group` do not accept `--exceptions` (exit code `2`).
+- `--no-exceptions` ignores the file and reports every control.
+
+#### Reusable workflows
+
+A job-level call (`jobs.<id>.uses`) counts as coverage when it references an OSDO reusable workflow whose file name matches the control, for example `opensecdevops/osdo-workflows/.github/workflows/osdo-sast.yml@<ref>`. Reusable workflows that bundle several controls (for example `osdo-framework.yml`) are not mapped to individual controls and do not add coverage on their own.
 
 ---
 
-## Configuracion
+## Configuration
 
-El CLI usa dos niveles de configuracion:
+The CLI uses two configuration levels:
 
-### Nivel proyecto — `.osdo/config.yaml`
+### Project level — `.osdo/config.yaml`
 
-Archivo YAML en el directorio del proyecto. Se recomienda incluirlo en el repositorio (no contiene credenciales).
+YAML file in the project directory. It is recommended to commit it to the repository (it contains no credentials).
 
 ```yaml
 configVersion: "1.0"
 defaultPlatform: kubernetes
-defaultDomain: mi-empresa.com
+defaultDomain: my-company.com
 monitoring:
   enabled: true
   namespace: monitoring
@@ -182,33 +233,33 @@ security:
     threshold: high
 ```
 
-### Nivel usuario — almacen persistente del sistema
+### User level — system persistent store
 
-Tokens de autenticación y preferencias del usuario se almacenan de forma segura en el directorio de configuracion del sistema operativo (gestionado por el CLI). Nunca se escriben en el repositorio.
+Authentication tokens and user preferences are stored securely in the operating system's configuration directory (managed by the CLI). They are never written to the repository.
 
-### Variables de entorno
+### Environment variables
 
-| Variable | Descripcion |
+| Variable | Description |
 |----------|-------------|
-| `OSDO_APP_URL` | URL de la OSDO App |
-| `OSDO_VERBOSE` | Activar modo verbose (`true`/`false`) |
-| `OSDO_DRY_RUN` | Activar dry-run (`true`/`false`) |
-| `OSDO_OUTPUT` | Formato de salida (`table`/`json`/`yaml`) |
-| `OSDO_CONFIG` | Ruta a archivo de configuracion alternativo |
-| `DEBUG_OSDO` | Activar logs de depuracion internos |
+| `OSDO_APP_URL` | URL of the OSDO App |
+| `OSDO_VERBOSE` | Enable verbose mode (`true`/`false`) |
+| `OSDO_DRY_RUN` | Enable dry-run (`true`/`false`) |
+| `OSDO_OUTPUT` | Output format (`table`/`json`/`yaml`) |
+| `OSDO_CONFIG` | Path to an alternative configuration file |
+| `DEBUG_OSDO` | Enable internal debug logs |
 
 ---
 
-## Desarrollo
+## Development
 
 ```bash
-# Instalar dependencias
+# Install dependencies
 npm install
 
-# Compilar TypeScript
+# Compile TypeScript
 npm run build
 
-# Modo desarrollo (sin compilar)
+# Development mode (without compiling)
 npm run dev -- app status
 
 # Tests
@@ -218,41 +269,39 @@ npm test
 npm run lint
 ```
 
-### Estructura del proyecto
+### Project structure
 
 ```
 osdo-cli/
 ├── bin/
-│   ├── run.js          # Punto de entrada produccion
-│   └── dev.js          # Punto de entrada desarrollo
+│   ├── run.js          # Production entry point
+│   └── dev.js          # Development entry point
 ├── src/
-│   ├── commands/       # Comandos oclif (un fichero por comando)
-│   │   └── app/        # Subcomandos del topic "app"
-│   ├── hooks/          # Hooks oclif (init, prerun, postrun)
+│   ├── commands/       # oclif commands (one file per command)
+│   │   └── app/        # Subcommands of the "app" topic
+│   ├── hooks/          # oclif hooks (init, prerun, postrun)
 │   └── lib/
-│       ├── api/        # Cliente HTTP hacia la OSDO App
-│       ├── config/     # Tipos y gestor de configuracion
-│       └── generator/  # Motor Handlebars + prompts interactivos
-├── test/               # Tests con Mocha + Chai
+│       ├── api/        # HTTP client for the OSDO App
+│       ├── config/     # Configuration types and manager
+│       └── generator/  # Handlebars engine + interactive prompts
+├── test/               # Tests with Mocha + Chai
 ├── package.json
 └── tsconfig.json
 ```
 
 ---
 
-## Contribuir
+## Contributing
 
-1. Haz un fork del repositorio
-2. Crea una rama para tu feature: `git checkout -b feature/mi-feature`
-3. Asegúrate de que los tests pasan: `npm test`
-4. Abre un Pull Request hacia `main`
+1. Fork the repository
+2. Create a branch for your feature: `git checkout -b feature/my-feature`
+3. Make sure the tests pass: `npm test`
+4. Open a Pull Request against `main`
 
-Consulta [CONTRIBUTING.md](https://github.com/opensecdevops/osdo-cli/blob/main/CONTRIBUTING.md) para las guías detalladas.
+See [CONTRIBUTING.md](https://github.com/opensecdevops/osdo-cli/blob/main/CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
-## Licencia
+## License
 
-MIT — ver [LICENSE](LICENSE) para los detalles completos.
-
-Copyright (c) 2024 OpenSecDevOps Contributors
+Apache-2.0 — see [LICENSE](LICENSE) for the full terms.

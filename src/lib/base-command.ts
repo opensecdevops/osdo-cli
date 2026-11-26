@@ -61,7 +61,9 @@ export abstract class BaseCommand extends Command {
     if (flags.kubeconfig) this.configManager.setKubeconfig(flags.kubeconfig as string)
   }
 
-  async catch(error: Error): Promise<void> {
+  async catch(error: Error & {oclif?: {exit?: number | false}}): Promise<void> {
+    // Un error con código de salida explícito (p. ej. exit 2 o 3 en gates de CI) se propaga tal cual.
+    if (typeof error.oclif?.exit === 'number') throw error
     this.error(error.message, {exit: 1})
   }
 

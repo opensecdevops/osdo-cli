@@ -1,0 +1,95 @@
+# Manual npm release of the CLI, with provenance. Runs only from workflow_dispatch.
+#
+# Two jobs, split so that the job holding id-token: write never installs or
+# executes project code:
+#   build   - read-only token, no OIDC. npm ci --ignore-scripts, build, test,
+#             npm pack --ignore-scripts, upload the tarball as an artifact.
+#   publish - id-token: write, environment npm-release. Downloads the tarball and
+#             publishes that file. No install, no lifecycle scripts.
+#
+# publish runs only for main or a v* tag, and only when dry-run is false.
+# Requirements configured by the repository owner (see RELEASING.md):
+#   - Environment "npm-release" with a required reviewer and deployment
+#     branch/tag rules.
+#   - npm trusted publisher bound to this repository, this workflow file and the
+#     "npm-release" environment. No long-lived npm token is used.
+name: npm release (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Build and upload the tarball only; do not publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test and pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Install dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # --ignore-scripts: prepack needs the oclif CLI, which is not a
+      # devDependency, so the tarball is packed without oclif.manifest.json.
+      - name: Pack
+        run: npm pack --ignore-scripts
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-tarball
+          path: "*.tgz"
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    environment: npm-release
+    if: success() && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && !inputs.dry-run
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download tarball
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: npm-tarball
+          path: pkg
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing (OIDC) requires npm >= 11.5.1. Exact pin, not a range.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@11.5.1
+
+      - name: Publish tarball
+        run: npm publish "$(ls pkg/*.tgz)" --provenance --access public --ignore-scripts

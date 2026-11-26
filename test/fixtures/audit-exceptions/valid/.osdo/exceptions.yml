@@ -1,0 +1,12 @@
+- control: sbom
+  status: not-applicable
+  reason: Librería sin artefactos publicados; no hay imagen ni paquete que inventariar.
+  owner: equipo-plataforma
+  approved_by: jefe-seguridad
+  expires: 2027-06-30
+- control: iac
+  status: not-applicable
+  reason: El repositorio no contiene Terraform, Helm ni manifiestos de Kubernetes.
+  owner: equipo-plataforma
+  approved_by: jefe-seguridad
+  expires: 2027-06-30

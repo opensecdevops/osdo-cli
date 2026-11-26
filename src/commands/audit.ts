@@ -1,6 +1,6 @@
 import {Flags} from '@oclif/core'
 import {existsSync, mkdirSync, writeFileSync} from 'node:fs'
-import {dirname, join} from 'node:path'
+import {dirname, join, resolve} from 'node:path'
 import chalk from 'chalk'
 import {BaseCommand} from '../lib/base-command.js'
 import {loadWorkflowsFromDir, parseWorkflowContents, evaluateCoverage} from '../lib/audit/workflow-parser.js'
@@ -10,6 +10,13 @@ import {GitLabFetcher} from '../lib/audit/gitlab-fetcher.js'
 import {loadGitLabPipelinesFromDir, parseGitLabPipelineContents, evaluateGitLabCoverage} from '../lib/audit/gitlab-parser.js'
 import {scoreToLevel, MAX_SCORE} from '../lib/audit/baseline.js'
 import {renderTable, renderMarkdown, renderJson, renderHtml} from '../lib/audit/reporter.js'
+import {
+  AuditExceptionsError,
+  DEFAULT_EXCEPTIONS_PATH,
+  applyExceptions,
+  loadExceptionsFile,
+} from '../lib/audit/exceptions.js'
+import type {AuditException} from '../lib/audit/exceptions.js'
 
 /**
  * Audit — Audita los workflows de GitHub de un repositorio u organización
@@ -39,6 +46,8 @@ export default class Audit extends BaseCommand {
     '<%= config.bin %> audit --platform gitlab --gitlab-project acme/backend --token $GITLAB_TOKEN',
     '<%= config.bin %> audit --platform gitlab --gitlab-group acme --token $GITLAB_TOKEN --format markdown',
     '<%= config.bin %> audit --platform gitlab --path . --format table',
+    '<%= config.bin %> audit --path .github/workflows --exceptions ci/osdo-exceptions.yml --format json',
+    '<%= config.bin %> audit --path .github/workflows --no-exceptions --min-score 70',
   ]
 
   static flags = {
@@ -120,6 +129,16 @@ export default class Audit extends BaseCommand {
       description: 'Incluir repos archivados (solo con --org)',
     }),
 
+    // ── Excepciones N/A ────────────────────────────────────────────────────────
+    exceptions: Flags.string({
+      description: `Archivo de excepciones N/A (por defecto: ${DEFAULT_EXCEPTIONS_PATH} en modo --path; en --repo/--gitlab-project solo con este flag)`,
+      helpValue: 'archivo.yml',
+    }),
+    'no-exceptions': Flags.boolean({
+      default: false,
+      description: 'Ignorar el archivo de excepciones (la puntuación incluye todos los controles)',
+    }),
+
     // ── Modo CI ────────────────────────────────────────────────────────────────
     'fail-on-gap': Flags.boolean({
       default: false,
@@ -134,8 +153,13 @@ export default class Audit extends BaseCommand {
     const {flags} = await this.parse(Audit)
     const date = new Date().toISOString().split('T')[0]
 
+    if (flags.exceptions !== undefined && flags['no-exceptions']) {
+      this.error('--exceptions y --no-exceptions son incompatibles.', {exit: 2})
+    }
+
     // ── PLATAFORMA GITLAB ─────────────────────────────────────────────────────
     if (flags.platform === 'gitlab') {
+      if (flags['gitlab-group']) this.rejectExceptionsFlag(flags, '--gitlab-group')
       await this.runGitLabAudit(flags, date)
       return
     }
@@ -150,6 +174,7 @@ export default class Audit extends BaseCommand {
 
     // ── MODO ORG ──────────────────────────────────────────────────────────────
     if (flags.org) {
+      this.rejectExceptionsFlag(flags, '--org')
       await this.runOrgAudit({...flags, org: flags.org}, date)
       return
     }
@@ -194,8 +219,11 @@ export default class Audit extends BaseCommand {
       target = flags.path
     }
 
-    // Evaluar cobertura
-    const result = evaluateCoverage(workflows)
+    // Evaluar cobertura y aplicar excepciones N/A
+    const result = applyExceptions(
+      evaluateCoverage(workflows),
+      this.resolveExceptions(flags, flags.repo ? 'remote' : 'local', date),
+    )
 
     // Filtrar controles según nivel solicitado
     if (flags.level !== 'completo') {
@@ -340,6 +368,8 @@ export default class Audit extends BaseCommand {
       'output-file'?: string
       level: string
       'include-archived': boolean
+      exceptions?: string
+      'no-exceptions': boolean
       'fail-on-gap': boolean
       'min-score'?: number
     },
@@ -449,6 +479,8 @@ export default class Audit extends BaseCommand {
       target = searchPath
     }
 
+    result = applyExceptions(result, this.resolveExceptions(flags, project ? 'remote' : 'local', date))
+
     // Filtrar controles según nivel
     if (flags.level !== 'completo') {
       const keep = new Set(flags.level === 'esencial' ? ['esencial'] : ['esencial', 'recomendado'])
@@ -479,6 +511,53 @@ export default class Audit extends BaseCommand {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  /** Las excepciones son por repositorio: no se aplican a auditorías multi-repo. */
+  private rejectExceptionsFlag(flags: {exceptions?: string}, mode: string): void {
+    if (flags.exceptions !== undefined) {
+      this.error(
+        `--exceptions no es compatible con ${mode}: las excepciones son por repositorio.\n` +
+        '  Audita un repositorio con --repo o --path.',
+        {exit: 2},
+      )
+    }
+  }
+
+  /**
+   * Carga las excepciones N/A de una fuente auditada.
+   *  - local (--path): `.osdo/exceptions.yml` del directorio actual, o --exceptions.
+   *  - remote (--repo, --gitlab-project): solo con --exceptions; el archivo local por defecto se ignora.
+   * Archivo inválido → exit 2.
+   */
+  private resolveExceptions(
+    flags: {exceptions?: string; 'no-exceptions': boolean},
+    source: 'local' | 'remote',
+    today: string,
+  ): AuditException[] {
+    if (flags['no-exceptions']) return []
+
+    const defaultPath = resolve(process.cwd(), DEFAULT_EXCEPTIONS_PATH)
+    let filePath: string | undefined
+    if (flags.exceptions !== undefined) {
+      filePath = resolve(process.cwd(), flags.exceptions)
+    } else if (source === 'local') {
+      filePath = existsSync(defaultPath) ? defaultPath : undefined
+    } else if (existsSync(defaultPath)) {
+      this.warn(
+        `Se ignora ${DEFAULT_EXCEPTIONS_PATH} del directorio actual: en modo remoto las excepciones ` +
+        'solo se aplican con --exceptions <archivo>.',
+      )
+    }
+
+    if (filePath === undefined) return []
+
+    try {
+      return loadExceptionsFile(filePath, today)
+    } catch (err: unknown) {
+      if (err instanceof AuditExceptionsError) this.error(err.message, {exit: 2})
+      throw err
+    }
+  }
 
   private buildReport(
     result: WorkflowAuditResult,

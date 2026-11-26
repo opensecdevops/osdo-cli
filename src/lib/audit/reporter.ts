@@ -1,6 +1,19 @@
 import chalk from 'chalk'
 import type {WorkflowAuditResult, ControlCoverage} from './workflow-parser.js'
-import {scoreToLevel, MAX_SCORE} from './baseline.js'
+import {scoreToLevel, MAX_SCORE, SECURITY_CONTROLS} from './baseline.js'
+import type {AuditException} from './exceptions.js'
+
+const NA_LABEL = 'N/A (excepción)'
+
+/** Nombre legible del control; si no existe en el baseline, devuelve el id. */
+function controlName(id: string): string {
+  return SECURITY_CONTROLS.find(c => c.id === id)?.name ?? id
+}
+
+/** Controles con brecha real: no cubiertos y sin excepción aplicada. */
+function realGaps(coverage: ControlCoverage[]): ControlCoverage[] {
+  return coverage.filter(c => !c.covered && !c.exception)
+}
 
 const LEVEL_COLORS: Record<string, (s: string) => string> = {
   esencial:    (s) => chalk.red(s),
@@ -29,7 +42,7 @@ export function renderTable(result: WorkflowAuditResult, target: string): string
   lines.push('')
 
   // Tabla de controles
-  const colW = [30, 12, 32, 12]
+  const colW = [30, 16, 32, 12]
   const header = [
     'Control'.padEnd(colW[0]),
     'Estado'.padEnd(colW[1]),
@@ -40,13 +53,17 @@ export function renderTable(result: WorkflowAuditResult, target: string): string
   lines.push('─'.repeat(header.replace(/\x1b\[[0-9;]*m/g, '').length))
 
   for (const c of coverage) {
-    const status = c.covered
-      ? chalk.green('✓ Cubierto')
-      : LEVEL_COLORS[c.control.level]('✗ FALTANTE')
+    const status = c.exception
+      ? chalk.cyan(NA_LABEL)
+      : c.covered
+        ? chalk.green('✓ Cubierto')
+        : LEVEL_COLORS[c.control.level]('✗ FALTANTE')
 
-    const coveredBy = c.covered
-      ? chalk.dim((c.coveredBy ?? '').slice(0, colW[2] - 1))
-      : chalk.dim('—')
+    const coveredBy = c.exception
+      ? chalk.dim(`hasta ${c.exception.expires}`)
+      : c.covered
+        ? chalk.dim((c.coveredBy ?? '').slice(0, colW[2] - 1))
+        : chalk.dim('—')
 
     const lvlLabel = LEVEL_COLORS[c.control.level](
       LEVEL_LABELS[c.control.level].padEnd(colW[3]),
@@ -68,10 +85,16 @@ export function renderTable(result: WorkflowAuditResult, target: string): string
   const bar = buildProgressBar(score, MAX_SCORE, 30)
   lines.push(`Puntuación OSDO:  ${bar}  ${chalk.bold(`${score}/${MAX_SCORE}`)} pts`)
   lines.push(`Nivel de madurez: ${emoji}  ${chalk.bold(`Nivel ${level} — ${label}`)}`)
+  if (result.exceptions.length > 0) {
+    lines.push(chalk.dim(
+      `  Puntuación sin excepciones: ${result.scoreWithoutExceptions}/${MAX_SCORE} pts ` +
+      `· ${result.exceptions.length} control(es) excluidos del cálculo`,
+    ))
+  }
   lines.push('')
 
   // Gaps críticos
-  const gaps = coverage.filter(c => !c.covered)
+  const gaps = realGaps(coverage)
   if (gaps.length === 0) {
     lines.push(chalk.green('✓ Cobertura completa — ¡ejercicio DevSecOps excelente!'))
   } else {
@@ -91,6 +114,17 @@ export function renderTable(result: WorkflowAuditResult, target: string): string
       lines.push(`     ${chalk.cyan('Solución:')} ${c.control.recommendation.split('\n')[0]}`)
       lines.push('')
     }
+  }
+
+  // Excepciones aplicadas (visibles, nunca ocultas)
+  if (result.exceptions.length > 0) {
+    lines.push(chalk.bold(`Excepciones aplicadas: ${result.exceptions.length}`))
+    for (const e of result.exceptions) {
+      lines.push(`  • ${chalk.bold(controlName(e.control))} (${e.control})`)
+      lines.push(`     Motivo:      ${e.reason}`)
+      lines.push(`     Responsable: ${e.owner} · Aprobado por: ${e.approved_by} · Vence: ${e.expires}`)
+    }
+    lines.push('')
   }
 
   // Permisos
@@ -124,13 +158,15 @@ export function renderMarkdown(result: WorkflowAuditResult, target: string, date
   const {level, label, emoji} = scoreToLevel(score)
 
   const covered = coverage.filter(c => c.covered)
-  const gaps = coverage.filter(c => !c.covered)
+  const gaps = realGaps(coverage)
   const essentialGaps = gaps.filter(c => c.control.level === 'esencial')
 
   const controlTable = coverage
     .map(c => {
-      const status = c.covered ? '✅ Cubierto' : '❌ Faltante'
-      const by = c.covered ? `\`${(c.coveredBy ?? '').slice(0, 45)}\`` : '—'
+      const status = c.exception ? `⚪ ${NA_LABEL}` : c.covered ? '✅ Cubierto' : '❌ Faltante'
+      const by = c.exception
+        ? `hasta ${c.exception.expires}`
+        : c.covered ? `\`${(c.coveredBy ?? '').slice(0, 45)}\`` : '—'
       const lvl = {esencial: '🔴 Esencial', recomendado: '🟡 Recomendado', completo: '🔵 Completo'}[c.control.level]
       return `| ${c.control.name} | ${status} | ${by} | ${lvl} | ${c.control.points}pts |`
     })
@@ -159,7 +195,7 @@ export function renderMarkdown(result: WorkflowAuditResult, target: string, date
 
 **Fecha:** ${date}
 **Workflows auditados:** ${workflowCount}
-**Puntuación:** ${score}/${MAX_SCORE} pts
+**Puntuación:** ${score}/${MAX_SCORE} pts${result.exceptions.length > 0 ? ` (sin excepciones: ${result.scoreWithoutExceptions}/${MAX_SCORE})` : ''}
 **Nivel:** ${emoji} Nivel ${level} — ${label}
 
 ---
@@ -168,9 +204,10 @@ export function renderMarkdown(result: WorkflowAuditResult, target: string, date
 
 | Métr ica | Valor |
 |---------|-------|
-| Puntuación OSDO | **${score}/${MAX_SCORE}** |
+| Puntuación OSDO | **${score}/${MAX_SCORE}**${result.exceptions.length > 0 ? ` (sin excepciones: ${result.scoreWithoutExceptions}/${MAX_SCORE})` : ''} |
 | Nivel de madurez | **${emoji} Nivel ${level} — ${label}** |
 | Controles cubiertos | **${covered.length}/${coverage.length}** |
+| Excepciones N/A | **${result.exceptions.length}** (excluidas del cálculo) |
 | Gaps críticos | **${essentialGaps.length}** controles esenciales faltantes |
 | Workflows con permissions | **${result.permissionsCoverage.filter(p => p.hasPermissions).length}/${workflowCount}** |
 
@@ -190,7 +227,7 @@ ${controlTable}
 
 ${gaps.length === 0 ? '✅ **Sin gaps detectados.** Cobertura completa.' : gapsList}
 
-${unpinnedSection}
+${exceptionsMarkdown(result.exceptions)}${unpinnedSection}
 
 ---
 
@@ -221,6 +258,7 @@ osdo catalog list
 export function renderJson(result: WorkflowAuditResult, target: string): object {
   const {score, coverage} = result
   const {level, label} = scoreToLevel(score)
+  const gaps = realGaps(coverage)
 
   return {
     target,
@@ -231,12 +269,24 @@ export function renderJson(result: WorkflowAuditResult, target: string): object 
       level,
       label,
     },
+    scoreWithoutExceptions: result.scoreWithoutExceptions,
     summary: {
       total: coverage.length,
       covered: coverage.filter(c => c.covered).length,
-      gaps: coverage.filter(c => !c.covered).length,
-      essential_gaps: coverage.filter(c => !c.covered && c.control.level === 'esencial').length,
+      gaps: gaps.length,
+      essential_gaps: gaps.filter(c => c.control.level === 'esencial').length,
+      not_applicable: coverage.filter(c => c.exception).length,
     },
+    exceptions: result.exceptions.map(e => ({
+      control: e.control,
+      name: controlName(e.control),
+      points: SECURITY_CONTROLS.find(c => c.id === e.control)?.points ?? 0,
+      status: e.status,
+      reason: e.reason,
+      owner: e.owner,
+      approved_by: e.approved_by,
+      expires: e.expires,
+    })),
     controls: coverage.map(c => ({
       id: c.control.id,
       name: c.control.name,
@@ -246,7 +296,8 @@ export function renderJson(result: WorkflowAuditResult, target: string): object 
       is_osdo: c.isOsdo,
       points: c.control.points,
       files: c.files,
-      recommendation: c.covered ? null : c.control.recommendation,
+      excepted: c.exception !== undefined,
+      recommendation: c.covered || c.exception ? null : c.control.recommendation,
     })),
     permissions: result.permissionsCoverage,
     pinned_actions: result.pinnedActionsReport.map(r => ({
@@ -262,13 +313,15 @@ export function renderJson(result: WorkflowAuditResult, target: string): object 
 export function renderHtml(result: WorkflowAuditResult, target: string, date: string): string {
   const {score, coverage} = result
   const {level, label, emoji} = scoreToLevel(score)
-  const gaps = coverage.filter(c => !c.covered)
+  const gaps = realGaps(coverage)
   const essentialGaps = gaps.filter(c => c.control.level === 'esencial')
 
   const rows = coverage.map(c => {
-    const statusIcon = c.covered ? '✅' : '❌'
+    const statusIcon = c.exception ? `⚪ ${NA_LABEL}` : c.covered ? '✅' : '❌'
     const levelColor = c.control.level === 'esencial' ? '#dc2626' : c.control.level === 'recomendado' ? '#ca8a04' : '#2563eb'
-    const covBy = c.covered ? `<code>${(c.coveredBy ?? '').slice(0, 50)}</code>` : '—'
+    const covBy = c.exception
+      ? `hasta ${escapeHtml(c.exception.expires)}`
+      : c.covered ? `<code>${(c.coveredBy ?? '').slice(0, 50)}</code>` : '—'
     return `<tr>
       <td>${c.control.name}</td>
       <td>${statusIcon}</td>
@@ -348,11 +401,61 @@ export function renderHtml(result: WorkflowAuditResult, target: string, date: st
     <tbody>${rows}</tbody>
   </table>
 
-  ${gaps.length > 0 ? `<h2>🚧 Gaps y Recomendaciones</h2>${gapCards}` : '<h2>✅ Cobertura Completa</h2><p>Todos los controles están cubiertos. ¡Excelente trabajo!</p>'}
+  ${gaps.length > 0 ? `<h2>🚧 Gaps y Recomendaciones</h2>${gapCards}` : '<h2>✅ Cobertura Completa</h2><p>Todos los controles están cubiertos o exceptuados. ¡Excelente trabajo!</p>'}
+
+  ${exceptionsHtml(result)}
 
   <footer>Generado por <strong>OSDO CLI v2</strong> — ${new Date().toISOString()}</footer>
 </body>
 </html>`
+}
+
+// ── Excepciones ───────────────────────────────────────────────────────────────
+
+/** Sección Markdown de excepciones N/A; cadena vacía si no hay ninguna. */
+function exceptionsMarkdown(exceptions: AuditException[]): string {
+  if (exceptions.length === 0) return ''
+  const cell = (s: string): string => s.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+  const rows = exceptions
+    .map(e => `| ${cell(controlName(e.control))} (\`${e.control}\`) | ${cell(e.reason)} | ${cell(e.owner)} | ${cell(e.approved_by)} | ${e.expires} |`)
+    .join('\n')
+  return `## ⚖️ Excepciones N/A (excluidas del cálculo)
+
+| Control | Motivo | Responsable | Aprobado por | Vence |
+|---------|--------|-------------|--------------|-------|
+${rows}
+
+> Los controles exceptuados se excluyen del numerador y del denominador de la puntuación.
+
+---
+
+`
+}
+
+/** Sección HTML de excepciones N/A; cadena vacía si no hay ninguna. */
+function exceptionsHtml(result: WorkflowAuditResult): string {
+  if (result.exceptions.length === 0) return ''
+  const rows = result.exceptions.map(e => `<tr>
+      <td>${escapeHtml(controlName(e.control))} <code>${escapeHtml(e.control)}</code></td>
+      <td>${escapeHtml(e.reason)}</td>
+      <td>${escapeHtml(e.owner)}</td>
+      <td>${escapeHtml(e.approved_by)}</td>
+      <td>${escapeHtml(e.expires)}</td>
+    </tr>`).join('\n')
+  return `<h2>⚖️ Excepciones N/A</h2>
+  <p>Controles exceptuados: no cuentan en numerador ni denominador. Puntuación sin excepciones: <strong>${result.scoreWithoutExceptions}/${MAX_SCORE}</strong>.</p>
+  <table>
+    <thead><tr><th>Control</th><th>Motivo</th><th>Responsable</th><th>Aprobado por</th><th>Vence</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
