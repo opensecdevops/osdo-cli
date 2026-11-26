@@ -210,6 +210,25 @@ Un control que no aplica al repositorio puede marcarse como N/A en `.osdo/except
 
 Una llamada a nivel de job (`jobs.<id>.uses`) cuenta como cobertura cuando referencia una reusable workflow OSDO cuyo nombre coincide con el control, por ejemplo `opensecdevops/osdo-workflows/.github/workflows/osdo-sast.yml@<ref>`. Las reusable workflows que agrupan varios controles (p. ej. `osdo-framework.yml`) no se asignan a controles concretos y no suman cobertura por sí solas.
 
+### `osdo certify`
+
+Evalúa el proyecto frente a un estándar, una lista de estándares o todos.
+
+```bash
+osdo certify --standard owasp                  # estándar por defecto: owasp
+osdo certify --standards owasp,slsa,openssf    # selección
+osdo certify --standard all --report           # todos los estándares
+osdo certify --standards owasp --min-score 70  # puerta: exit 3 si la puntuación es menor de 70
+osdo certify --standards owasp,soc2 --min owasp=80 --min soc2=60
+```
+
+- `--standard` y `--standards` son incompatibles (exit `2`).
+- `--min <estándar>=<0-100>` es repetible y fija un umbral para un estándar. Prevalece sobre `--min-score`, que se aplica a todos los estándares evaluados. Un `--min` para un estándar no seleccionado es un error (exit `2`).
+- Códigos de salida: `0` evaluado (o nada aplicable), `2` uso inválido, `3` algún estándar por debajo de su umbral.
+- La aplicabilidad se detecta por proyecto. `smart-contract` solo aplica si hay fuentes Solidity (`*.sol`, Hardhat, Foundry, Truffle) o `.osdo/results/smart-contract`. `owasp-mobile` solo aplica si hay un proyecto móvil (`AndroidManifest.xml`, `Info.plist`, `*.xcodeproj`/`*.xcworkspace`) o `.osdo/results/mobile`. Los demás estándares aplican siempre. Un estándar que no aplica se informa como N/A, no puntúa y no tiene umbral.
+- Con `--report`, `.osdo/reports/certification-report.md` contiene todos los estándares seleccionados, y se escribe `.osdo/reports/certification-<estándar>.md` por cada estándar evaluado.
+- `--output json` imprime un objeto si hay un solo estándar, o un array si hay varios (las entradas N/A tienen `status: "N/A"`).
+
 ---
 
 ## Configuracion

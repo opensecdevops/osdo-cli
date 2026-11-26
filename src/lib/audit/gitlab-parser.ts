@@ -2,7 +2,6 @@ import {readFileSync, readdirSync, existsSync, statSync} from 'node:fs'
 import {join} from 'node:path'
 import yaml from 'js-yaml'
 import {SECURITY_CONTROLS} from './baseline.js'
-import type {SecurityControl} from './baseline.js'
 import type {WorkflowAuditResult, ControlCoverage} from './workflow-parser.js'
 
 // ── Tipos propios de GitLab CI ────────────────────────────────────────────────
@@ -269,6 +268,16 @@ export function parseGitLabPipelineContents(
 // ── Evaluación de cobertura ───────────────────────────────────────────────────
 
 /**
+ * Compara un nombre de stage con un patrón por palabras completas.
+ * Una subcadena simple hace que el stage `scan` acredite SCA (`sca` ⊂ `scan`).
+ * Los separadores válidos son cualquier carácter que no sea alfanumérico.
+ */
+function stageMatches(stage: string, pattern: string): boolean {
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`).test(stage)
+}
+
+/**
  * Normaliza el nombre de imagen: extrae solo el nombre sin tag/digest/registry.
  */
 function normalizeImage(image: string | GitLabImageRef | undefined): string {
@@ -391,7 +400,7 @@ export function evaluateGitLabCoverage(pipelines: ParsedGitLabPipeline[]): Workf
         }
 
         // Por nombre de stage
-        const stageMatch = patterns.stages.find(s => stage.includes(s.toLowerCase()))
+        const stageMatch = patterns.stages.find(s => stageMatches(stage, s.toLowerCase()))
         if (stageMatch) {
           result.covered = true
           result.coveredBy = `stage: ${job.stage} (${jobName})`
@@ -443,7 +452,10 @@ export function evaluateGitLabCoverage(pipelines: ParsedGitLabPipeline[]): Workf
     ].filter(Boolean) as (string | GitLabImageRef)[]
 
     const pinned = allImages.filter(i => isImagePinnedBySha(i))
-    const ratio = allImages.length === 0 ? 1 : pinned.length / allImages.length
+    // Sin ninguna imagen declarada no hay evidencia de imágenes fijadas: los jobs
+    // usan la imagen por defecto del runner, que el pipeline no fija. No se
+    // concede crédito por ausencia de declaraciones (ratio 0, no 1).
+    const ratio = allImages.length === 0 ? 0 : pinned.length / allImages.length
 
     const unpinned = allImages
       .filter(i => !isImagePinnedBySha(i))

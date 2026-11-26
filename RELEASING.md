@@ -7,7 +7,8 @@ is set to `false`.
 ## Workflow structure
 
 - `build` (read-only token, no OIDC): `npm ci --ignore-scripts`, build, test,
-  `npm pack --ignore-scripts`, upload the tarball as an artifact.
+  `npm pack` (its `prepack` builds and generates `oclif.manifest.json`; `oclif`
+  is a pinned devDependency), upload the tarball as an artifact.
 - `publish` (environment `npm-release`, `id-token: write`): runs only when
   `build` succeeds, the ref is `main` or a `v*` tag, and `dry-run` is false. It
   downloads the tarball and runs
@@ -41,11 +42,10 @@ is set to `false`.
 
 ## Known gaps
 
-- `prepack` requires the `oclif` CLI, which is not a devDependency. The
-  tarball is therefore packed with `--ignore-scripts` and does not include
-  `oclif.manifest.json`. oclif falls back to runtime discovery. Adding `oclif`
-  as a devDependency is a separate change.
-- `npm test` fails at mocha startup on Node 26 (yargs ESM error). CI pins
-  Node 22, but this has not been verified there.
+- The `build` job runs `npm ci --ignore-scripts` and then `npm pack` with
+  lifecycle scripts enabled, so the tarball includes `oclif.manifest.json`.
+  The `publish` job keeps `--ignore-scripts`.
+- Tests run on Node 20 and 26 through `.mocharc.json` (`tsx` loader, mocha 11).
+  CI pins Node 22, which has not been verified.
 - Action references are pinned by full SHA, with the tag in a comment. Keep
   them current with Dependabot or Renovate.
