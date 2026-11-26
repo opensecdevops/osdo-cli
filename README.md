@@ -210,6 +210,25 @@ A control that does not apply to the repository can be marked N/A in `.osdo/exce
 
 A job-level call (`jobs.<id>.uses`) counts as coverage when it references an OSDO reusable workflow whose file name matches the control, for example `opensecdevops/osdo-workflows/.github/workflows/osdo-sast.yml@<ref>`. Reusable workflows that bundle several controls (for example `osdo-framework.yml`) are not mapped to individual controls and do not add coverage on their own.
 
+### `osdo certify`
+
+Evaluates the project against one standard, a list of standards, or all of them.
+
+```bash
+osdo certify --standard owasp                  # default standard: owasp
+osdo certify --standards owasp,slsa,openssf    # selection
+osdo certify --standard all --report           # every standard
+osdo certify --standards owasp --min-score 70  # gate: exit 3 if the score is below 70
+osdo certify --standards owasp,soc2 --min owasp=80 --min soc2=60
+```
+
+- `--standard` and `--standards` are mutually exclusive (exit `2`).
+- `--min <estándar>=<0-100>` is repeatable and sets a threshold for one standard. It takes precedence over `--min-score`, which applies to every evaluated standard. A `--min` for a standard that is not selected is an error (exit `2`).
+- Exit codes: `0` evaluated (or nothing applicable), `2` invalid usage, `3` a standard is below its threshold.
+- Applicability is detected per project. `smart-contract` applies only when there are Solidity sources (`*.sol`, Hardhat, Foundry, Truffle) or `.osdo/results/smart-contract`. `owasp-mobile` applies only when there is a mobile project (`AndroidManifest.xml`, `Info.plist`, `*.xcodeproj`/`*.xcworkspace`) or `.osdo/results/mobile`. Other standards always apply. A standard that does not apply is reported as N/A, is not scored and has no threshold.
+- With `--report`, `.osdo/reports/certification-report.md` contains all selected standards, and `.osdo/reports/certification-<estándar>.md` is written for each evaluated standard.
+- `--output json` prints one object for a single standard, or an array for several (N/A entries have `status: "N/A"`).
+
 ---
 
 ## Configuration

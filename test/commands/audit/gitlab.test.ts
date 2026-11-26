@@ -5,8 +5,9 @@ import {fileURLToPath} from 'node:url'
 import {parseGitLabPipelineContents, evaluateGitLabCoverage, loadGitLabPipelinesFromDir} from '../../../src/lib/audit/gitlab-parser.js'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
-// Fixture: el pipeline real de la OSDO App
-const APP_PIPELINE_PATH = join(__dirname, '../../../../app/.gitlab-ci.yml')
+// Fixture in-repo: pipeline representativo de una aplicación OSDO (no el real)
+const APP_FIXTURE_DIR = join(__dirname, '../../fixtures/gitlab/osdo-app')
+const APP_PIPELINE_PATH = join(APP_FIXTURE_DIR, '.gitlab-ci.yml')
 
 describe('GitLab Audit — OSDO App pipeline', () => {
   let result: ReturnType<typeof evaluateGitLabCoverage>
@@ -126,8 +127,7 @@ describe('GitLab Audit — OSDO App pipeline', () => {
 
 describe('GitLab Audit — loadGitLabPipelinesFromDir', () => {
   it('carga pipeline desde el directorio de la app', () => {
-    const appDir = join(__dirname, '../../../../app')
-    const pipelines = loadGitLabPipelinesFromDir(appDir)
+    const pipelines = loadGitLabPipelinesFromDir(APP_FIXTURE_DIR)
     expect(pipelines.length).to.be.greaterThanOrEqual(1)
     expect(pipelines[0].file).to.include('gitlab-ci')
   })
@@ -199,5 +199,54 @@ stages:
     const sastCtrl = result.coverage.find(c => c.control.id === 'sast')
     expect(sastCtrl?.covered).to.be.true
     expect(sastCtrl?.coveredBy).to.include('include:')
+  })
+})
+
+describe('GitLab Audit — coincidencia de stage por palabra completa', () => {
+  it('un stage "scan" no acredita SCA (sca es subcadena de scan)', () => {
+    const pipelines = parseGitLabPipelineContents([{
+      file: '.gitlab-ci.yml',
+      content: `
+stages:
+  - scan
+
+generic_scan:
+  stage: scan
+  script:
+    - echo "nada que detectar"
+`,
+    }])
+    const result = evaluateGitLabCoverage(pipelines)
+    expect(result.coverage.find(c => c.control.id === 'sca')?.covered).to.be.false
+  })
+
+  it('un stage con el nombre completo del control sigue acreditándolo', () => {
+    const pipelines = parseGitLabPipelineContents([{
+      file: '.gitlab-ci.yml',
+      content: `
+dependency_check:
+  stage: dependency_scan
+  script:
+    - echo "revisar dependencias"
+`,
+    }])
+    const result = evaluateGitLabCoverage(pipelines)
+    const sca = result.coverage.find(c => c.control.id === 'sca')
+    expect(sca?.covered).to.be.true
+    expect(sca?.coveredBy).to.include('dependency_check')
+  })
+
+  it('un pipeline sin imágenes declaradas no acredita pinned-actions', () => {
+    const pipelines = parseGitLabPipelineContents([{
+      file: '.gitlab-ci.yml',
+      content: `
+build:
+  stage: build
+  script:
+    - make
+`,
+    }])
+    const result = evaluateGitLabCoverage(pipelines)
+    expect(result.coverage.find(c => c.control.id === 'pinned-actions')?.covered).to.be.false
   })
 })

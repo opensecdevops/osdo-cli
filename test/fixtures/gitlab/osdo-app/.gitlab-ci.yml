@@ -1,0 +1,59 @@
+# Fixture representativo de un pipeline GitLab de aplicación OSDO.
+# Lo usa test/commands/audit/gitlab.test.ts. No es el pipeline real de ninguna
+# aplicación: solo debe contener los controles que el test espera ver cubiertos
+# y, a propósito, ausentes (sca, dast, slsa, policy-gate, license).
+
+stages:
+  - build
+  - test
+  - scan
+  - sign
+  - deploy
+
+build_app:
+  stage: build
+  image: node:20-alpine
+  script:
+    - npm ci
+    - npm run build
+    - npx cyclonedx-npm --output-file sbom.cdx.json
+
+secret_scan:
+  stage: test
+  image: zricethezav/gitleaks:8.18.4
+  script:
+    - gitleaks detect --source . --redact
+
+sonarqube:
+  stage: test
+  image: sonarsource/sonar-scanner-cli:5.0
+  script:
+    - sonar-scanner -Dsonar.projectKey=osdo-app
+
+hadolint_dockerfile:
+  stage: test
+  image: hadolint/hadolint:v2.12.0-alpine
+  script:
+    - hadolint Dockerfile
+
+container_scan:
+  stage: scan
+  image: aquasec/trivy:0.54.1
+  script:
+    - trivy image --exit-code 1 --severity HIGH,CRITICAL "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
+sign_image:
+  stage: sign
+  image: gcr.io/projectsigstore/cosign:v2.2.4@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  script:
+    - cosign sign --yes "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+  rules:
+    - if: $CI_COMMIT_TAG
+
+deploy_prod:
+  stage: deploy
+  image: bitnami/kubectl:1.30
+  script:
+    - kubectl apply -f k8s/
+  rules:
+    - if: $CI_COMMIT_TAG

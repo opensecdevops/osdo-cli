@@ -1,7 +1,7 @@
 import {Flags} from '@oclif/core'
 import chalk from 'chalk'
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs'
-import {join} from 'node:path'
+import {existsSync, mkdirSync, readdirSync, writeFileSync, type Dirent} from 'node:fs'
+import {join, resolve} from 'node:path'
 import Table from 'cli-table3'
 import {BaseCommand} from '../lib/base-command.js'
 
@@ -24,6 +24,7 @@ interface ComplianceCheck {
 }
 
 interface CertificationResult {
+  id: Standard
   standard: string
   timestamp: Date
   score: number
@@ -423,22 +424,105 @@ function buildSmartContractChecks(ctx: ScanContext): ComplianceCheck[] {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Ejecutar verificación por estándar
+// Estándares: nombres, constructores, aplicabilidad y selección
 // ──────────────────────────────────────────────────────────────────────────────
 
-function runStandard(standard: Standard, ctx: ScanContext): CertificationResult {
-  let checks: ComplianceCheck[]
-  let standardName: string
+const STANDARD_NAMES: Record<Standard, string> = {
+  'owasp': 'OWASP Top 10 2021',
+  'slsa': 'SLSA v1.0',
+  'openssf': 'OpenSSF Scorecard',
+  'soc2': 'SOC 2 Type II',
+  'iso27001': 'ISO 27001:2022',
+  'owasp-mobile': 'OWASP Mobile Top 10 2024',
+  'smart-contract': 'OWASP Smart Contract Top 10',
+}
 
-  switch (standard) {
-    case 'owasp':          { checks = buildOWASPChecks(ctx);         standardName = 'OWASP Top 10 2021';            break }
-    case 'slsa':           { checks = buildSLSAChecks(ctx);          standardName = 'SLSA v1.0';                    break }
-    case 'openssf':        { checks = buildOpenSSFChecks(ctx);       standardName = 'OpenSSF Scorecard';            break }
-    case 'soc2':           { checks = buildSOC2Checks(ctx);          standardName = 'SOC 2 Type II';                break }
-    case 'iso27001':       { checks = buildISO27001Checks(ctx);      standardName = 'ISO 27001:2022';               break }
-    case 'owasp-mobile':   { checks = buildOWASPMobileChecks(ctx);   standardName = 'OWASP Mobile Top 10 2024';    break }
-    case 'smart-contract': { checks = buildSmartContractChecks(ctx); standardName = 'OWASP Smart Contract Top 10'; break }
+const CHECK_BUILDERS: Record<Standard, (ctx: ScanContext) => ComplianceCheck[]> = {
+  'owasp': buildOWASPChecks,
+  'slsa': buildSLSAChecks,
+  'openssf': buildOpenSSFChecks,
+  'soc2': buildSOC2Checks,
+  'iso27001': buildISO27001Checks,
+  'owasp-mobile': buildOWASPMobileChecks,
+  'smart-contract': buildSmartContractChecks,
+}
+
+function isStandard(value: string): value is Standard {
+  return (ALL_STANDARDS as string[]).includes(value)
+}
+
+const TREE_SKIP_DIRS = new Set(['node_modules', '.git', '.osdo', 'dist', 'build', 'vendor', 'target'])
+
+/** Busca un nombre de fichero o directorio que cumpla `match` hasta `maxDepth` niveles. */
+function treeHas(root: string, match: (name: string) => boolean, maxDepth = 4): boolean {
+  const walk = (dir: string, depth: number): boolean => {
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(dir, {withFileTypes: true})
+    } catch {
+      return false
+    }
+    for (const entry of entries) {
+      if (match(entry.name)) return true
+      if (entry.isDirectory() && depth < maxDepth && !TREE_SKIP_DIRS.has(entry.name) && walk(join(dir, entry.name), depth + 1)) {
+        return true
+      }
+    }
+    return false
   }
+  return walk(root, 0)
+}
+
+interface Applicability {
+  applicable: boolean
+  reason?: string
+}
+
+/**
+ * Decide si un estándar aplica al proyecto. Los estándares de software general
+ * (OWASP Top 10, SLSA, OpenSSF, SOC 2, ISO 27001) aplican siempre; los específicos
+ * solo cuando el proyecto tiene la tecnología correspondiente.
+ */
+function probeApplicability(standard: Standard, rootPath: string): Applicability {
+  if (standard === 'owasp-mobile') {
+    const mobile = existsSync(join(rootPath, '.osdo/results/mobile')) ||
+      treeHas(rootPath, n => n === 'AndroidManifest.xml' || n === 'Info.plist' || n.endsWith('.xcodeproj') || n.endsWith('.xcworkspace'))
+    return mobile
+      ? {applicable: true}
+      : {applicable: false, reason: 'no hay proyecto móvil (AndroidManifest.xml, Info.plist, *.xcodeproj/*.xcworkspace ni .osdo/results/mobile)'}
+  }
+
+  if (standard === 'smart-contract') {
+    const contracts = existsSync(join(rootPath, '.osdo/results/smart-contract')) ||
+      treeHas(rootPath, n => n.endsWith('.sol') || ['hardhat.config.js', 'hardhat.config.ts', 'foundry.toml', 'truffle-config.js'].includes(n))
+    return contracts
+      ? {applicable: true}
+      : {applicable: false, reason: 'no hay contratos inteligentes (*.sol, Hardhat, Foundry, Truffle ni .osdo/results/smart-contract)'}
+  }
+
+  return {applicable: true}
+}
+
+interface EvaluatedStandard {
+  id: Standard
+  applicable: true
+  result: CertificationResult
+  /** Puntuación mínima exigida a este estándar (--min o --min-score); undefined si no hay umbral */
+  threshold?: number
+}
+
+interface NotApplicableStandard {
+  id: Standard
+  applicable: false
+  name: string
+  reason: string
+}
+
+type StandardOutcome = EvaluatedStandard | NotApplicableStandard
+
+function runStandard(standard: Standard, ctx: ScanContext): CertificationResult {
+  const checks = CHECK_BUILDERS[standard](ctx)
+  const standardName = STANDARD_NAMES[standard]
 
   const passed = checks.filter(c => c.status === 'PASS').length
   const failed = checks.filter(c => c.status === 'FAIL').length
@@ -458,6 +542,7 @@ function runStandard(standard: Standard, ctx: ScanContext): CertificationResult 
   if (!ctx.hasWorkflow) gapAnalysis.push("Ejecuta 'osdo init' para crear workflows de seguridad")
 
   return {
+    id: standard,
     standard: standardName,
     timestamp: new Date(),
     score,
@@ -470,14 +555,19 @@ function runStandard(standard: Standard, ctx: ScanContext): CertificationResult 
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Generación de reporte Markdown
+// Generación de reportes Markdown
 // ──────────────────────────────────────────────────────────────────────────────
 
-function generateMarkdownReport(result: CertificationResult, rootPath: string): string {
-  const reportsDir = join(rootPath, '.osdo', 'reports')
-  mkdirSync(reportsDir, {recursive: true})
-  const reportPath = join(reportsDir, 'certification-report.md')
+function verdictFor(score: number): string {
+  return score >= 80
+    ? '✅ **LISTO PARA CERTIFICACIÓN**'
+    : score >= 60
+      ? '⚠️ **CUMPLIMIENTO PARCIAL** — Resolver brechas antes de certificar'
+      : '❌ **NO LISTO** — Se requiere remediación significativa'
+}
 
+/** Cuerpo de un estándar evaluado: resumen, controles, brechas y veredicto (subsecciones `###`). */
+function renderStandardBody(result: CertificationResult): string {
   const statusEmoji = (s: CheckStatus) => s === 'PASS' ? '✅' : s === 'MANUAL' ? '🔵' : '❌'
 
   const rows = result.checks
@@ -485,21 +575,12 @@ function generateMarkdownReport(result: CertificationResult, rootPath: string): 
     .join('\n')
 
   const gaps = result.gapAnalysis.length > 0
-    ? `\n## Análisis de Brechas\n\n${result.gapAnalysis.map(g => `- ${g}`).join('\n')}\n`
+    ? `\n### Análisis de Brechas\n\n${result.gapAnalysis.map(g => `- ${g}`).join('\n')}\n`
     : ''
 
-  const verdict = result.score >= 80
-    ? '✅ **LISTO PARA CERTIFICACIÓN**'
-    : result.score >= 60
-      ? '⚠️ **CUMPLIMIENTO PARCIAL** — Resolver brechas antes de certificar'
-      : '❌ **NO LISTO** — Se requiere remediación significativa'
+  return `**Puntuación**: ${result.score}%
 
-  const content = `# Reporte de Certificación: ${result.standard}
-
-**Generado**: ${result.timestamp.toISOString()}
-**Puntuación**: ${result.score}%
-
-## Resumen
+### Resumen
 
 | Métrica | Valor |
 |---------|-------|
@@ -508,22 +589,80 @@ function generateMarkdownReport(result: CertificationResult, rootPath: string): 
 | Manual | ${result.manual} |
 | Puntuación | ${result.score}% |
 
-## Controles Detallados
+### Controles Detallados
 
 | ID | Control | Categoría | Estado | Severidad | Scanner | Remediación |
 |----|---------|-----------|--------|-----------|---------|-------------|
 ${rows}
 ${gaps}
-## Veredicto
+### Veredicto
 
-${verdict}
-
----
-*Generado por OSDO CLI v2 — [opensecdevops.org](https://opensecdevops.org)*
+${verdictFor(result.score)}
 `
+}
 
-  writeFileSync(reportPath, content)
-  return reportPath
+const REPORT_FOOTER = '---\n*Generado por OSDO CLI v2 — [opensecdevops.org](https://opensecdevops.org)*\n'
+
+/** Reporte de un único estándar (`certification-<estándar>.md`). */
+function renderStandardReport(result: CertificationResult): string {
+  return `# Reporte de Certificación: ${result.standard}
+
+**Generado**: ${result.timestamp.toISOString()}
+
+${renderStandardBody(result)}
+${REPORT_FOOTER}`
+}
+
+/** Reporte combinado (`certification-report.md`) con todos los estándares seleccionados. */
+function renderCombinedReport(outcomes: StandardOutcome[], generatedAt: Date): string {
+  const summaryRows = outcomes.map(o => {
+    if (!o.applicable) return `| ${o.id} | ${STANDARD_NAMES[o.id]} | N/A | — | N/A |`
+    const threshold = o.threshold === undefined ? '—' : `${o.threshold}%`
+    const outcome = o.threshold === undefined
+      ? 'Evaluado'
+      : o.result.score >= o.threshold ? 'Cumple umbral' : 'No cumple umbral'
+    return `| ${o.id} | ${o.result.standard} | ${o.result.score}% | ${threshold} | ${outcome} |`
+  }).join('\n')
+
+  const sections = outcomes.map(o => o.applicable
+    ? `## ${o.result.standard}\n\n${renderStandardBody(o.result)}`
+    : `## ${o.name} (N/A)\n\nNo aplica a este proyecto: ${o.reason}.\n`,
+  ).join('\n')
+
+  return `# Reporte de Certificación OSDO
+
+**Generado**: ${generatedAt.toISOString()}
+
+## Resumen global
+
+| Id | Estándar | Puntuación | Umbral | Resultado |
+|----|----------|------------|--------|-----------|
+${summaryRows}
+
+${sections}
+${REPORT_FOOTER}`
+}
+
+/**
+ * Escribe el reporte combinado y un fichero por estándar evaluado en .osdo/reports/.
+ * Devuelve las rutas escritas.
+ */
+function writeReports(outcomes: StandardOutcome[], rootPath: string, generatedAt: Date): string[] {
+  const reportsDir = join(rootPath, '.osdo', 'reports')
+  mkdirSync(reportsDir, {recursive: true})
+
+  const combinedPath = join(reportsDir, 'certification-report.md')
+  writeFileSync(combinedPath, renderCombinedReport(outcomes, generatedAt))
+  const written = [combinedPath]
+
+  for (const o of outcomes) {
+    if (!o.applicable) continue
+    const perStandardPath = join(reportsDir, `certification-${o.id}.md`)
+    writeFileSync(perStandardPath, renderStandardReport(o.result))
+    written.push(perStandardPath)
+  }
+
+  return written
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -540,22 +679,34 @@ export default class Certify extends BaseCommand {
   static examples = [
     '<%= config.bin %> certify --standard owasp',
     '<%= config.bin %> certify --standard slsa --report',
+    '<%= config.bin %> certify --standards owasp,slsa,openssf --min-score 70',
+    '<%= config.bin %> certify --standards owasp,soc2 --min owasp=80 --min soc2=60',
     '<%= config.bin %> certify --standard openssf --output json',
-    '<%= config.bin %> certify --standard soc2 --report',
-    '<%= config.bin %> certify --standard iso27001',
-    '<%= config.bin %> certify --standard all',
+    '<%= config.bin %> certify --standard all --report',
   ]
 
   static flags = {
     ...BaseCommand.globalFlags,
     standard: Flags.string({
       char: 's',
-      description: 'Estándar a verificar',
+      description: 'Estándar a verificar, o "all". Por defecto: owasp. Incompatible con --standards',
       options: [...ALL_STANDARDS, 'all'],
-      default: 'owasp',
+    }),
+    standards: Flags.string({
+      description: 'Lista de estándares separada por comas (p. ej. owasp,slsa,openssf). Incompatible con --standard',
+    }),
+    'min-score': Flags.integer({
+      description: 'Puntuación mínima (0-100) para cada estándar evaluado; exit 3 si alguno no la alcanza',
+      min: 0,
+      max: 100,
+    }),
+    min: Flags.string({
+      description: 'Umbral de un estándar concreto: <estándar>=<0-100>. Repetible; prevalece sobre --min-score',
+      helpValue: 'estandar=puntuacion',
+      multiple: true,
     }),
     report: Flags.boolean({
-      description: 'Generar reporte Markdown en .osdo/reports/certification-report.md',
+      description: 'Generar reporte combinado en .osdo/reports/certification-report.md y un reporte por estándar (certification-<estándar>.md)',
       default: false,
     }),
     path: Flags.string({
@@ -573,14 +724,21 @@ export default class Certify extends BaseCommand {
 
   async run(): Promise<void> {
     const {flags} = await this.parse(Certify)
-    const rootPath = flags.path
+    const rootPath = resolve(flags.path)
+    const json = flags.output === 'json'
+    const say = (msg = '') => {
+      if (!json) this.log(msg)
+    }
 
-    this.log(chalk.cyan('\nOSDO Certification Readiness'))
-    this.log(chalk.gray('════════════════════════════════════════\n'))
+    const selected = this.resolveStandards(flags)
+    const thresholds = this.resolveThresholds(flags, selected)
+
+    say(chalk.cyan('\nOSDO Certification Readiness'))
+    say(chalk.gray('════════════════════════════════════════\n'))
 
     const ctx = buildScanContext(rootPath)
 
-    if (flags.verbose) {
+    if (flags.verbose && !json) {
       this.log(chalk.gray('Contexto de escaneo detectado:'))
       this.log(chalk.gray(`  SAST:            ${ctx.hasSAST ? chalk.green('✓') : chalk.red('✗')} (.osdo/results/sast/semgrep.json)`))
       this.log(chalk.gray(`  SCA:             ${ctx.hasSCA ? chalk.green('✓') : chalk.red('✗')} (.osdo/results/sca/)`))
@@ -598,48 +756,115 @@ export default class Certify extends BaseCommand {
       this.log('')
     }
 
-    const standards: Standard[] = flags.standard === 'all'
-      ? ALL_STANDARDS
-      : [flags.standard as Standard]
-
-    const results: CertificationResult[] = []
-
-    for (const std of standards) {
-      this.log(chalk.white(`Verificando: ${std.toUpperCase()}`) + chalk.gray(' ...'))
-      const result = runStandard(std, ctx)
-      results.push(result)
-
-      if (flags.output === 'json') {
-        this.log(JSON.stringify(result, null, 2))
-        continue
+    const outcomes: StandardOutcome[] = selected.map((id): StandardOutcome => {
+      const applicability = probeApplicability(id, rootPath)
+      if (!applicability.applicable) {
+        return {id, applicable: false, name: STANDARD_NAMES[id], reason: applicability.reason ?? 'no aplicable'}
       }
+      return {
+        id,
+        applicable: true,
+        result: runStandard(id, ctx),
+        threshold: thresholds[id] ?? flags['min-score'],
+      }
+    })
 
-      this.displayResult(result)
+    const evaluated = outcomes.filter((o): o is EvaluatedStandard => o.applicable)
+    const failures = evaluated.filter(o => o.threshold !== undefined && o.result.score < o.threshold)
 
-      if (flags.report) {
-        const reportPath = generateMarkdownReport(result, rootPath)
-        this.log(chalk.green('\nReporte generado: ') + chalk.cyan(reportPath))
+    if (json) {
+      const payload = outcomes.map(o => o.applicable
+        ? {
+          status: 'evaluated',
+          ...o.result,
+          minScore: o.threshold ?? null,
+          thresholdMet: o.threshold === undefined ? null : o.result.score >= o.threshold,
+        }
+        : {id: o.id, standard: o.name, status: 'N/A', reason: o.reason})
+      this.log(JSON.stringify(payload.length === 1 ? payload[0] : payload, null, 2))
+    } else {
+      for (const o of outcomes) {
+        if (!o.applicable) {
+          this.log(chalk.gray(`\nEstándar: ${o.name} — N/A (${o.reason})`))
+          continue
+        }
+        this.log(chalk.white(`Verificando: ${o.id.toUpperCase()}`) + chalk.gray(' ...'))
+        this.displayResult(o.result)
       }
     }
 
-    if (flags.output === 'json') return
+    if (flags.report) {
+      const paths = writeReports(outcomes, rootPath, new Date())
+      say(chalk.green('\nReportes generados:'))
+      for (const p of paths) say(chalk.cyan(`  ${p}`))
+    }
 
-    // Resumen global cuando se ejecutan múltiples estándares
-    if (results.length > 1) {
-      const avgScore = Math.round(results.reduce((s, r) => s + r.score, 0) / results.length)
+    if (evaluated.length === 0) {
+      say(chalk.yellow('\nNingún estándar seleccionado aplica a este proyecto; no hay nada que evaluar.'))
+      return
+    }
+
+    if (!json && evaluated.length > 1) {
+      const avgScore = Math.round(evaluated.reduce((s, o) => s + o.result.score, 0) / evaluated.length)
       this.log(chalk.gray('\n════════════════════════════════════════'))
-      this.log(chalk.gray('Puntuación global: ') + chalk.cyan(`${avgScore}%`))
+      this.log(chalk.gray('Puntuación global: ') + chalk.cyan(`${avgScore}%`) +
+        chalk.gray(` (${evaluated.length} evaluado(s)${outcomes.length > evaluated.length ? `, ${outcomes.length - evaluated.length} N/A` : ''})`))
     }
 
-    // Verificar si hay controles CRÍTICOS fallidos
-    const criticalFailed = results.some(r =>
-      r.checks.filter(c => c.severity === 'CRITICAL' && c.status === 'FAIL').length > 0,
-    )
-
-    if (criticalFailed) {
-      this.log('')
-      this.log(chalk.red('Hay controles CRÍTICOS sin cubrir. Revisa el análisis de brechas.'))
+    if (!json) {
+      const criticalFailed = evaluated.some(o =>
+        o.result.checks.some(c => c.severity === 'CRITICAL' && c.status === 'FAIL'),
+      )
+      if (criticalFailed) {
+        this.log('')
+        this.log(chalk.red('Hay controles CRÍTICOS sin cubrir. Revisa el análisis de brechas.'))
+      }
     }
+
+    if (failures.length > 0) {
+      const detail = failures
+        .map(o => `${o.id} ${o.result.score}% < ${o.threshold}%`)
+        .join('; ')
+      this.error(`Umbral de puntuación no alcanzado: ${detail}`, {exit: 3})
+    }
+  }
+
+  /** Estándares a evaluar: --standards (lista) o --standard (uno o "all"; por defecto owasp). */
+  private resolveStandards(flags: {standard?: string; standards?: string}): Standard[] {
+    if (flags.standard !== undefined && flags.standards !== undefined) {
+      this.error('--standard y --standards son incompatibles; usa solo uno.', {exit: 2})
+    }
+
+    if (flags.standards !== undefined) {
+      const names = flags.standards.split(',').map(s => s.trim().toLowerCase()).filter(s => s !== '')
+      if (names.length === 0) this.error('--standards no contiene ningún estándar.', {exit: 2})
+      if (names.includes('all')) return [...ALL_STANDARDS]
+      const unknown = names.filter(n => !isStandard(n))
+      if (unknown.length > 0) {
+        this.error(`Estándar(es) desconocido(s): ${unknown.join(', ')}. Válidos: ${ALL_STANDARDS.join(', ')}`, {exit: 2})
+      }
+      return [...new Set(names as Standard[])]
+    }
+
+    const single = flags.standard ?? 'owasp'
+    return single === 'all' ? [...ALL_STANDARDS] : [single as Standard]
+  }
+
+  /** Umbrales por estándar desde --min <estándar>=<n> (repetible). */
+  private resolveThresholds(flags: {min?: string[]}, selected: Standard[]): Partial<Record<Standard, number>> {
+    const thresholds: Partial<Record<Standard, number>> = {}
+    for (const raw of flags.min ?? []) {
+      const match = /^([a-z0-9-]+)=(\d{1,3})$/.exec(raw.trim().toLowerCase())
+      if (!match) this.error(`--min inválido: "${raw}". Formato: <estándar>=<0-100>`, {exit: 2})
+      const [, id, value] = match
+      const score = Number(value)
+      if (!isStandard(id)) this.error(`--min: estándar desconocido "${id}". Válidos: ${ALL_STANDARDS.join(', ')}`, {exit: 2})
+      if (score > 100) this.error(`--min ${id}=${score}: la puntuación debe estar entre 0 y 100`, {exit: 2})
+      if (!selected.includes(id)) this.error(`--min ${id}=${score}: ${id} no está entre los estándares seleccionados`, {exit: 2})
+      if (thresholds[id] !== undefined) this.error(`--min repetido para ${id}`, {exit: 2})
+      thresholds[id] = score
+    }
+    return thresholds
   }
 
   private displayResult(result: CertificationResult): void {

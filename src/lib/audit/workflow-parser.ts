@@ -162,6 +162,12 @@ export function evaluateCoverage(workflows: ParsedWorkflow[]): WorkflowAuditResu
       files: [],
     }
 
+    // Cada step que cubre el control aporta una evidencia con su rango:
+    // 0 = action/reusable workflow OSDO, 1 = equivalente de terceros, 2 = keyword en run:.
+    // covered_by reporta la mejor evidencia (menor rango); a igualdad de rango, la primera
+    // en orden de declaración. Así una action OSDO no queda oculta por un step posterior.
+    const hits: Array<{rank: number; coveredBy: string; isOsdo: boolean; file: string}> = []
+
     for (const step of allSteps as (WorkflowStep & {_file: string})[]) {
       // Controles estructurales (permissions, pinned) — evaluados por separado
       if (control.id === 'permissions' || control.id === 'pinned-actions') continue
@@ -171,32 +177,30 @@ export function evaluateCoverage(workflows: ParsedWorkflow[]): WorkflowAuditResu
 
       // Detectar action OSDO nativa (o reusable workflow OSDO del mismo control)
       if (uses.includes(control.osdoAction.toLowerCase()) || isOsdoReusableWorkflowFor(control, step.uses ?? '')) {
-        result.covered = true
-        result.isOsdo = true
-        result.coveredBy = step.uses ?? control.osdoAction
-        if (!result.files.includes(step._file)) result.files.push(step._file)
+        hits.push({rank: 0, coveredBy: step.uses ?? control.osdoAction, isOsdo: true, file: step._file})
         continue
       }
 
       // Detectar equivalentes de terceros
-      for (const equiv of control.equivalentActions) {
-        if (uses.includes(equiv.toLowerCase())) {
-          result.covered = true
-          result.coveredBy = step.uses ?? equiv
-          if (!result.files.includes(step._file)) result.files.push(step._file)
-          break
-        }
+      const equiv = control.equivalentActions.find(e => uses.includes(e.toLowerCase()))
+      if (equiv) {
+        hits.push({rank: 1, coveredBy: step.uses ?? equiv, isOsdo: false, file: step._file})
+        continue
       }
 
       // Detectar palabras clave en `run:`
-      for (const kw of control.runKeywords) {
-        if (run.includes(kw.toLowerCase())) {
-          result.covered = true
-          result.coveredBy = `run: ${kw}`
-          if (!result.files.includes(step._file)) result.files.push(step._file)
-          break
-        }
+      const kw = control.runKeywords.find(k => run.includes(k.toLowerCase()))
+      if (kw) {
+        hits.push({rank: 2, coveredBy: `run: ${kw}`, isOsdo: false, file: step._file})
       }
+    }
+
+    if (hits.length > 0) {
+      const best = hits.reduce((a, b) => (b.rank < a.rank ? b : a))
+      result.covered = true
+      result.coveredBy = best.coveredBy
+      result.isOsdo = best.isOsdo
+      result.files = [...new Set(hits.map(h => h.file))]
     }
 
     return result

@@ -1,6 +1,6 @@
 import {Flags} from '@oclif/core'
 import {existsSync, mkdirSync, writeFileSync} from 'node:fs'
-import {dirname, join, resolve} from 'node:path'
+import {dirname, resolve} from 'node:path'
 import chalk from 'chalk'
 import {BaseCommand} from '../lib/base-command.js'
 import {loadWorkflowsFromDir, parseWorkflowContents, evaluateCoverage} from '../lib/audit/workflow-parser.js'
@@ -208,7 +208,8 @@ export default class Audit extends BaseCommand {
       }
     } else {
       // Local
-      const workflowsDir = join(process.cwd(), flags.path)
+      // resolve: una ruta absoluta de --path no debe concatenarse con el cwd
+      const workflowsDir = resolve(flags.path)
       if (!existsSync(workflowsDir)) {
         this.warn(`Directorio no encontrado: ${workflowsDir}`)
         this.log(`  Crea workflows en ${workflowsDir} o indica la ruta con --path`)
@@ -467,7 +468,7 @@ export default class Audit extends BaseCommand {
       }
     } else {
       // Local path
-      const localPath = join(process.cwd(), flags.path)
+      const localPath = resolve(flags.path)
       const searchPath = flags.path === '.github/workflows' ? process.cwd() : localPath
       this.log(chalk.dim(`Cargando pipelines GitLab desde: ${searchPath}`))
       const pipelines = loadGitLabPipelinesFromDir(searchPath)

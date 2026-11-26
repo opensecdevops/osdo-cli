@@ -29,7 +29,7 @@
   "scripts": {
     "build": "shx rm -rf dist && tsc -b && shx cp -r src/templates/full src/templates/basic src/templates/container dist/templates/",
     "dev": "tsc -b --watch",
-    "lint": "eslint . --ext .ts",
+    "lint": "eslint .",
     "postpack": "shx rm -f oclif.manifest.json",
     "prepack": "npm run build && oclif manifest && oclif readme",
     "test": "mocha --forbid-only \"test/**/*.test.ts\"",
@@ -61,14 +61,17 @@
     "@types/chai": "^5",
     "@types/sinon": "^17",
     "typescript": "^5.5",
-    "mocha": "^10",
+    "mocha": "^11.8.0",
     "chai": "^5",
     "sinon": "^18",
-    "ts-node": "^10",
     "shx": "^0.3",
     "eslint": "^8",
     "@typescript-eslint/eslint-plugin": "^7",
-    "@typescript-eslint/parser": "^7"
+    "@typescript-eslint/parser": "^7",
+    "@types/mocha": "^10.0.10",
+    "@eslint/js": "8.57.1",
+    "oclif": "4.24.0",
+    "tsx": "4.23.15"
   },
   "oclif": {
     "bin": "osdo",

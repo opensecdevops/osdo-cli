@@ -4,3 +4,4 @@ dist
 *.d.ts.map
 oclif.manifest.json
 .DS_Store
+*.tsbuildinfo

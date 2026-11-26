@@ -162,3 +162,16 @@ describe('osdo audit — excepciones N/A y códigos de salida', () => {
     expect(json.score.total).to.equal(36) // secrets 14 + sast 14 + permissions 8
   })
 })
+
+describe('osdo audit --path', () => {
+  it('acepta una ruta absoluta aunque el cwd sea otro directorio', async () => {
+    const dir = makeRepo('valid')
+    const otherCwd = mkdtempSync(join(tmpdir(), 'osdo-cwd-'))
+    tmpDirs.push(otherCwd)
+    const {stdout, error} = await inDir(otherCwd, () =>
+      runCommand(['audit', '--path', join(dir, '.github', 'workflows'), '--format', 'json']),
+    )
+    expect(error).to.be.undefined
+    expect(JSON.parse(stdout).score.total).to.be.greaterThan(0)
+  })
+})

@@ -50,6 +50,8 @@ export function renderTable(result: WorkflowAuditResult, target: string): string
     'Nivel'.padEnd(colW[3]),
   ].join('  ')
   lines.push(chalk.bold(header))
+  // Quitar secuencias ANSI de color para medir el ancho visible; el \x1b es intencional.
+  // eslint-disable-next-line no-control-regex
   lines.push('─'.repeat(header.replace(/\x1b\[[0-9;]*m/g, '').length))
 
   for (const c of coverage) {
@@ -202,7 +204,7 @@ export function renderMarkdown(result: WorkflowAuditResult, target: string, date
 
 ## 📊 Resumen Ejecutivo
 
-| Métr ica | Valor |
+| Métrica | Valor |
 |---------|-------|
 | Puntuación OSDO | **${score}/${MAX_SCORE}**${result.exceptions.length > 0 ? ` (sin excepciones: ${result.scoreWithoutExceptions}/${MAX_SCORE})` : ''} |
 | Nivel de madurez | **${emoji} Nivel ${level} — ${label}** |

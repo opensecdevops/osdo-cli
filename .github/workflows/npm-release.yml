@@ -52,10 +52,10 @@ jobs:
       - name: Test
         run: npm test
 
-      # --ignore-scripts: prepack needs the oclif CLI, which is not a
-      # devDependency, so the tarball is packed without oclif.manifest.json.
+      # Lifecycle scripts run here (read-only job, no OIDC): prepack builds the
+      # project and generates oclif.manifest.json with the pinned devDependency.
       - name: Pack
-        run: npm pack --ignore-scripts
+        run: npm pack
 
       - name: Upload tarball
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
